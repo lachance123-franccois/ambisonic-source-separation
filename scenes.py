@@ -10,7 +10,7 @@ from torch.utils.data import Dataset
 from ambisonics import encode_foa
 from config import SR, N_SAMPLES, TARGET_RMS
 
-#Mélange deux sources dans une scène ambisonique (4, T).
+#Mélange deux sources dans une scène ambisonique.
 #az1, az2 : nombre (source fixe)  (source mobile).
 def make_scene(s1, s2, az1, az2):
     return encode_foa(s1, az1) + encode_foa(s2, az2)
