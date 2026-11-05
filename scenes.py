@@ -1,9 +1,3 @@
-"""Construction des scènes : deux locuteurs, encodés en ambisonie FOA.
-
-Cette partie "simulation" est volontairement minimale (sources ponctuelles, sans salle).
-C'est ici que tu peux la personnaliser : réverbération, niveaux différents, bruit...
-La seule contrainte : le Dataset doit renvoyer le même dictionnaire (foa, target, interferer, az).
-"""
 from math import gcd
 from pathlib import Path
 
