@@ -1,16 +1,3 @@
-"""Entraînement.
-
-Deux modes :
-  --mode fixed        : le modèle extrait toujours la voix située DEVANT (0°). Pas de conditionnement.
-                        (étapes 2 et 3 : autoencodeur dense, puis sparse)
-  --mode conditioned  : le modèle reçoit l'azimut visé (FiLM) et extrait la voix à cette direction.
-                        (étapes 4 et 5, avec --moving pour les sources mobiles)
-
-Exemples :
-  python train.py --data_dir LibriSpeech/train-clean-100 --mode fixed --sparse none --name dense
-  python train.py --data_dir LibriSpeech/train-clean-100 --mode fixed --sparse topk --name sparse
-  python train.py --data_dir LibriSpeech/train-clean-100 --mode conditioned --sparse topk --name cond
-"""
 import argparse
 from pathlib import Path
 
