@@ -1,12 +1,12 @@
-# Evaluation : SI-SDR avant extraction, après beamformer, après modèle.
-#On peut aussi tester la robustesse à une erreur sur la direction visée (--az_errors).
-
 import argparse
 import csv
 from pathlib import Path
-
+import pandas as pd
+import matplotlib.pyplot as plt 
 import torch
+import os
 from torch.utils.data import DataLoader
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from beamformer import cardioid_beamformer
 from metrics import si_sdr
@@ -21,15 +21,17 @@ def load_model(path):
     model.eval()
     return model, ckpt["mode"]
 
+val_dir=r"C:\Users\AWOUNANG\Downloads\ambi-speaker-extraction\ambi-speaker-extraction\ambisonic-source-separation\TRAIN\LibriSpeech"
+model_dir=r"C:\Users\AWOUNANG\Downloads\ambi-speaker-extraction\ambi-speaker-extraction\ambisonic-source-separation\checkpoints\model.pt"
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--data_dir", required=True)
-    p.add_argument("--ckpt", required=True)
+    p.add_argument("--data_dir", default=val_dir)
+    p.add_argument("--ckpt", default=model_dir)
     p.add_argument("--n_items", type=int, default=200)
-    p.add_argument("--moving", action="store_true")
-    p.add_argument("--az_errors", type=float, nargs="+", default=[0.0],
-                   help="erreurs (en degrés) ajoutées à la direction visée")
+    p.add_argument("--moving", action="store_true",default=True)
+    p.add_argument("--az_errors", type=float, nargs="+", default=[0.0, 2.0, 5.0, 10.0, 15.0, 20.0, 30.0],
+                   help="erreurs (en degres) ajoutees à la direction visee")
     p.add_argument("--out", default="results/eval.csv")
     p.add_argument("--seed", type=int, default=999)
     args = p.parse_args()
@@ -66,6 +68,25 @@ def main():
         writer.writeheader()
         writer.writerows(rows)
     print(f"Résultats écrits dans {args.out}")
+    
+    df = pd.read_csv(args.out)
+
+# 2. Créer le graphique
+    plt.figure(figsize=(7, 5))
+    plt.plot(df["az_error_deg"], df["sisdr_beamformer"], label="Baseline : Beamformer", marker="o", color="red", linestyle="--")
+    plt.plot(df["az_error_deg"], df["sisdr_model"], label="Votre IA : Autoencodeur FiLM", marker="s", color="green", lw=2)
+    
+    plt.xlabel("Erreur de visee de l'azimut ")
+    plt.ylabel("Qualité audio finale (SI-SDR en dB)")
+    plt.title("Robustesse du système face aux erreurs de direction")
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.legend()
+    plt.tight_layout()
+    
+    # 3. Sauvegarder la figure
+    plt.savefig("results/courbe_robustesse.png", dpi=150)
+    plt.show()
+    print("Graphique de robustesse sauvegardé dans results/courbe_robustesse.png")
 
 
 if __name__ == "__main__":
