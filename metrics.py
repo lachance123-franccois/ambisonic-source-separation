@@ -1,4 +1,3 @@
-#Métrique d'évaluation : SI-SDR (Scale-Invariant Signal-to-Distortion Ratio).
 import torch
 
 
