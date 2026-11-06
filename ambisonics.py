@@ -12,8 +12,8 @@ import numpy as np
 
 
 def encode_foa(signal, azimuth_deg, elevation_deg=0.0):
-    """signal : (T,). azimuth_deg : nombre OU tableau (T,) si la source bouge.
-    Retourne un tableau (4, T) : ordre W, X, Y, Z."""
+    #signal : (T,). azimuth_deg : nombre OU tableau (T,) si la source bouge.
+    # Retourne un tableau (4, T) : ordre W, X, Y, Z.
     az = np.deg2rad(azimuth_deg)
     el = np.deg2rad(elevation_deg)
     w = signal
