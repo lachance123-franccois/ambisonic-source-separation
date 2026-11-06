@@ -15,8 +15,9 @@ from config import N_FREQ
 from features import stft, istft, spatial_features, az_to_frames
 
 
+ #Garde les k plus grandes valeurs de chaque trame, met le reste à 0.
 def keep_topk(z, k):
-    """Garde les k plus grandes valeurs de chaque trame, met le reste à 0."""
+    
     vals, idx = z.topk(k, dim=-1)
     return torch.zeros_like(z).scatter(-1, idx, vals)
 
@@ -34,8 +35,10 @@ class MaskAutoencoder(nn.Module):
             # Petit réseau qui transforme (cos az, sin az) en gamma et beta (FiLM)
             self.film = nn.Sequential(nn.Linear(2, 64), nn.ReLU(), nn.Linear(64, 2 * latent))
         self.decoder = nn.Sequential(
-            nn.Linear(latent, hidden), nn.ReLU(),
-            nn.Linear(hidden, N_FREQ), nn.Sigmoid(),
+            nn.Linear(latent, hidden), 
+            nn.ReLU(),
+            nn.Linear(hidden, N_FREQ),
+            nn.Sigmoid(),
         )
 
     def encode(self, feats):
@@ -45,8 +48,8 @@ class MaskAutoencoder(nn.Module):
         return z
 
     def forward(self, feats, az_frames=None):
-        """feats : (B, N, 3F). az_frames : (B, N) en degrés (si conditionné).
-        Retourne le masque (B, N, F) et le latent z (B, N, latent)."""
+  #  feats : (B, N, 3F). az_frames : (B, N) en degrés (si conditionné).
+ #  Retourne le masque (B, N, F) et le latent z (B, N, latent)
         z = self.encode(feats)
         h = z
         if self.conditioned:
@@ -58,8 +61,6 @@ class MaskAutoencoder(nn.Module):
 
 
 def extract_voice(model, foa, az_deg=None):
-    """foa : (B, 4, T). az_deg : (B, T) azimut visé (ignoré si le modèle n'est pas conditionné).
-    Retourne la voix estimée (B, T)."""
     T = foa.shape[-1]
     X = stft(foa)                                   # (B, 4, F, N)
     feats = spatial_features(X)                     # (B, N, 3F)
