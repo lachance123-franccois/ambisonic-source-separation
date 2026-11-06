@@ -43,8 +43,6 @@ def normalize_rms(x, rms=TARGET_RMS):
 def list_audio_files(folder):
     folder = Path(folder)
     files = sorted(list(folder.rglob("*.flac")) + list(folder.rglob("*.wav")))
-    if not files:
-        raise FileNotFoundError(f"Aucun fichier .flac/.wav trouve dans {folder}")
     return files
 
 
@@ -66,7 +64,7 @@ class SceneDataset(Dataset):
     """
 
     def __init__(self, files, n_items=1000, seed=None, moving=False,
-                 max_move_deg=60.0, fixed_target_az=None, min_sep_deg=30.0):
+                 max_move_deg=90, fixed_target_az=None, min_sep_deg=-90):
         self.files = list(files)
         self.n_items, self.seed = n_items, seed
         self.moving, self.max_move_deg = moving, max_move_deg
@@ -79,7 +77,7 @@ class SceneDataset(Dataset):
         if not self.moving:
             return np.full(N_SAMPLES, az_start)
         delta = rng.uniform(-self.max_move_deg, self.max_move_deg)
-        return az_start + np.linspace(0.0, delta, N_SAMPLES)
+        return az_start + np.linspace(0, delta, N_SAMPLES)
 
     def __getitem__(self, idx):
         rng = np.random.default_rng(None if self.seed is None else self.seed + idx)
