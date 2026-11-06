@@ -1,12 +1,7 @@
-"""Étape 3 : quelles dimensions du latent s'activent selon la direction ?
-
-On place UN seul locuteur à différents azimuts, on calcule le latent moyen,
+"""On place UN seul locuteur à différents azimuts, on calcule le latent moyen,
 et on trace une carte (dimensions du latent x azimut). Les dimensions sont triées
-par azimut préféré pour que la structure éventuelle soit visible.
+par azimut préféré pour que la structure éventuelle soit visible."""
 
-Exemple :
-  python analyze_latent.py --data_dir LibriSpeech/test-clean --ckpt checkpoints/sparse.pt
-"""
 import argparse
 from pathlib import Path
 
@@ -15,6 +10,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from ambisonics import encode_foa
 from config import N_SAMPLES
@@ -22,11 +19,12 @@ from evaluate import load_model
 from features import stft, spatial_features
 from scenes import list_audio_files, load_audio, random_clip, normalize_rms
 
-
+model_dir=r"C:\Users\AWOUNANG\Downloads\ambi-speaker-extraction\ambi-speaker-extraction\ambisonic-source-separation\checkpoints\model.pt"
+data_dir=r"C:\Users\AWOUNANG\Downloads\ambi-speaker-extraction\ambi-speaker-extraction\ambisonic-source-separation\LibriSpeech"
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--data_dir", required=True)
-    p.add_argument("--ckpt", required=True)
+    p.add_argument("--data_dir", default=data_dir)
+    p.add_argument("--ckpt", default=model_dir)
     p.add_argument("--n_clips", type=int, default=20)
     p.add_argument("--step", type=int, default=30, help="pas en degrés entre deux azimuts")
     p.add_argument("--out", default="results/latent_map.png")
