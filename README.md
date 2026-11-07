@@ -280,42 +280,68 @@ Figure : `results/courbe_robustesse.png`. Le beamformer cardioïde, dont le lobe
 
 **Carte du latent** (`results/latent_map.png`) : la parcimonie imposée (fraction active ≈ 0,28) est visible, et l'activation de certaines dimensions se déplace avec l'azimut (structure en « diagonale »), ce qui suggère un codage de la direction par des dimensions spécialisées.
 
-### 8.2 Structure du latent avec bruit d'azimut (modèle entraîné avec bruit uniforme)
+### 8.2 Structure du latent : sans bruit vs bruit uniforme ±5°
 
-Carte obtenue avec `analyze_latent.py` sur le modèle entraîné avec un bruit **uniforme ±5°** sur l'azimut visé (checkpoint `cond_moving_unif5`, enregistré sous `modelUniform.pt` dans la version actuelle de `train.py`). Figure : `results/latent_map_unif5.png`, à comparer à `results/latent_map.png` (modèle sans bruit).
+Cartes obtenues avec `analyze_latent.py` (20 clips, un azimut tous les 30°). Les dimensions sont triées par azimut préféré, donc **la forme en diagonale est en partie imposée par le tri** : ce qui est informatif, c'est le nombre de dimensions actives, la largeur en azimut de chaque dimension et les raies isolées.
 
-**Observations (à vérifier sur la figure)**
+| Sans bruit d'azimut | Bruit uniforme ±5° |
+|---|---|
+| ![Carte du latent sans bruit](results/latent_map.png) | ![Carte du latent avec bruit uniforme](results/latent_map_unif5.png) |
 
-- **Activations plus étalées en azimut.** Les dimensions basses (environ 4 à 20) forment une diagonale par blocs plus épaisse et plus diffuse que sans bruit : chaque dimension répond sur une plage d'angles plus large.
-- **Deux dimensions quasi constantes autour des indices 25 et 26**, fortement actives sur une grande partie de l'axe des azimuts (de −180° à environ −75°, puis de +120° à +150°) et éteintes dans la zone centrale et à droite. Elles semblent coder une information « hors champ » grossière.
-- **Parcimonie conservée.** Les dimensions situées au-delà d'environ 28 restent à zéro. La contrainte `topk = 8` limite de toute façon le nombre de dimensions actives par trame ; la fraction active moyenne reste à mesurer et à reporter (`Fraction de (dimension, azimut) actifs`).
+| | Sans bruit | Uniforme ±5° |
+|---|---|---|
+| Activation moyenne maximale (échelle de couleur) | ≈ 93 | ≈ 59 |
+| Dimensions actives | environ 0 à 25, plus **deux raies isolées vers les dimensions 50 et 61**, aux azimuts extrêmes (≈ ±150° à 180°) | environ 0 à 29, **rien au-delà** |
+| Forme | diagonale avec raies fines | diagonale plus régulière et plus compacte |
+| Continuité circulaire (−180° / +150°) | dimensions 50 et 61 actives aux deux extrémités | dimensions 0 et 1 actives aux deux extrémités |
 
-**Interprétation (hypothèse)** : un bruit sur la consigne FiLM oblige le décodeur à produire un masque correct pour des consignes légèrement décalées, ce qui peut se traduire par des réponses latentes moins étroites en azimut. Le latent est calculé **avant** FiLM, donc cette carte reflète surtout ce que l'encodeur a appris des descripteurs spatiaux, et non directement la consigne bruitée. Le lien de cause à effet est donc à établir.
+**Observations**
 
-**Ce que cette figure ne prouve pas** : elle ne mesure ni la qualité audio ni la robustesse. Affirmer que le modèle est « plus tolérant » ou qu'il perd « peu » de directivité demande les courbes SI-SDR du tableau 8.3 (modèle bruité vs modèle sans bruit, mêmes scènes, mêmes `--az_errors`).
+- Avec le bruit, **l'activité est regroupée dans les ≈ 30 premières dimensions** et les raies isolées à haut indice disparaissent. L'activation maximale est plus faible (attention : les échelles de couleur sont différentes, on ne compare pas les teintes).
+- La diagonale reste **étroite** : chaque dimension couvre environ une à trois cases de 30°. **Je ne vois pas d'élargissement net** des réponses en azimut avec le bruit ±5°.
+- Les deux cartes montrent une continuité entre −180° et +150° (mêmes dimensions actives aux deux bords), ce qui est cohérent avec un codage de l'azimut sur un cercle.
 
-À renseigner pour ce modèle : nombre d'époques réellement effectuées (la valeur par défaut de `--epochs` dans `train.py` était passée à 1 pour un essai), fraction active, meilleure erreur de validation.
+**À ne pas sur-interpréter** : le latent est calculé **avant** FiLM, donc la consigne bruitée ne le modifie pas directement. Cette carte ne mesure ni la qualité audio ni la robustesse, qui sont dans la section 8.3. Une carte, un modèle, une graine : les différences visibles peuvent aussi venir de l'initialisation.
 
-### 8.3 Effet du bruit d'azimut sur le SI-SDR (à compléter)
+### 8.3 Effet du bruit d'azimut sur le SI-SDR (modèle uniforme ±5° renseigné, autres à compléter)
 
 SI-SDR (dB) en fonction de l'erreur de visée, sources mobiles, mêmes scènes d'évaluation pour toutes les lignes.
 
 | Modèle | Bruit | 0° | 2° | 5° | 10° | 15° | 20° | 30° | Tolérance `e*` (−3 dB) |
 |---|---|---|---|---|---|---|---|---|---|
-| Beamformer cardioïde | – | 8,38 | 8,44 | 8,65 | 8,54 | 8,28 | 8,05 | 7,72 | |
-| `cond_moving` | aucun | 7,96 | 7,81 | 6,61 | 4,04 | 2,32 | 0,96 | −1,64 | |
-| `cond_moving_unif5` | U(±5°) | | | | | | | | |
+| Beamformer cardioïde | – | 8,38 | 8,44 | 8,65 | 8,54 | 8,28 | 8,05 | 7,72 | > 30° |
+| `cond_moving` | aucun | 7,96 | 7,81 | 6,61 | 4,04 | 2,32 | 0,96 | −1,64 | ≈ 8,2° |
+| `cond_moving_unif5` | U(±5°) | 8,08 | 7,91 | 7,09 | 4,64 | 2,54 | 0,89 | −1,95 | ≈ 9,1° |
 | `cond_moving_unif15` | U(±15°) | | | | | | | | |
 | `cond_moving_unif30` | U(±30°) | | | | | | | | |
 | `cond_moving_gauss3` | N(0, 3°) | | | | | | | | |
 | `cond_moving_gauss10` | N(0, 10°) | | | | | | | | |
 
+| Sans bruit | Bruit uniforme ±5° |
+|---|---|
+| ![Robustesse sans bruit](results/courbe_robustesse.png) | ![Robustesse avec bruit uniforme](results/courbe_robustesse_unif5.png) |
+
+Écart `unif5 − sans bruit` (dB) : **+0,12 (0°), +0,10 (2°), +0,48 (5°), +0,59 (10°), +0,22 (15°), −0,07 (20°), −0,31 (30°)**. La tolérance `e*` (perte de 3 dB par rapport à 0°, interpolation linéaire) passe de ≈ 8,2° à ≈ 9,1°. Le beamformer est identique dans les deux évaluations (même graine, mêmes scènes).
+
+**Lecture**
+
+- Le bruit uniforme ±5° donne un **gain modeste (≤ 0,6 dB) autour de 5° à 10°**, c'est-à-dire juste à la limite de la plage vue à l'entraînement, et **aucun gain au-delà de 15°**. Le modèle reste très en dessous du beamformer dès 5° d'erreur et passe sous 0 dB vers 20° à 30° : **la courbe ne s'aplatit pas**.
+- Aucun coût de directivité visible à erreur nulle (8,08 dB contre 7,96 dB), mais l'écart est petit.
+- **Prudence statistique** : 200 scènes, une graine, un seul entraînement par configuration. Des écarts de 0,1 à 0,6 dB ne sont pas démontrés significatifs. Il faut répéter avec plusieurs graines (ou calculer un intervalle de confiance par bootstrap sur les scènes) avant de conclure.
+- Cohérent avec la règle des trois sigmas et la plage d'entraînement : pour couvrir 20° à 30°, il faut un bruit d'amplitude comparable (`unif15`, `unif30`, `gauss10`), à tester.
+
+Courbe d'apprentissage du modèle `cond_moving_unif5` (100 époques) :
+
+![Courbe d'apprentissage avec bruit uniforme](results/courbe_apprentissage_unif5.png)
+
+Erreur L1 finale ≈ 0,20 (entraînement) et ≈ 0,21 (validation), lecture graphique. L'écart train / validation reste faible. **Attention** : dans la version actuelle de `compute_loss`, le bruit d'azimut est aussi appliqué à la validation, donc cette erreur de validation est mesurée avec des consignes bruitées et n'est pas strictement comparable à celle du modèle sans bruit (0,204).
+
 Erreur L1 de validation (azimut exact) pour contrôler que le bruit ne dégrade pas l'ajustement :
 
-| Modèle | Meilleure erreur validation | Époque |
+| Modèle | Erreur de validation (L1) | Époque |
 |---|---|---|
 | `cond_moving` | 0,204 | |
-| `cond_moving_unif5` | | |
+| `cond_moving_unif5` | ≈ 0,21 (lecture graphique, validation bruitée) | |
 | `cond_moving_unif15` | | |
 | `cond_moving_unif30` | | |
 | `cond_moving_gauss3` | | |
@@ -325,18 +351,18 @@ Erreur L1 de validation (azimut exact) pour contrôler que le bruit ne dégrade 
 
 | Méthode | SI-SDR entrée | SI-SDR sortie | Amélioration |
 |---|---|---|---|
-| Beamformer cardioïde | | | |
+| Beamformer cardioïde | −0,01 | 14,26 (fixe, 0°) ; 8,38 (mobiles) | +14,26 ; +8,38 |
 | AE dense (fixed) | | | |
-| AE sparse top-k (fixed) | | | |
-| AE conditionné (FiLM) | | | |
-| AE conditionné, sources mobiles | | | |
-| AE conditionné, mobiles, bruit uniforme | | | |
+| AE sparse top-k (fixed) | −0,01 | 11,15 | +11,16 |
+| AE conditionné (FiLM), sources fixes | −0,01 | 8,07 | +8,08 |
+| AE conditionné, sources mobiles | −0,01 | 7,96 | +7,97 |
+| AE conditionné, mobiles, bruit uniforme ±5° | −0,01 | 8,08 | +8,09 |
 | AE conditionné, mobiles, bruit gaussien | | | |
 
-### 8.5 Figures à insérer
+### 8.5 Figures disponibles et à produire
 
-- SI-SDR vs erreur de direction : beamformer, modèle sans bruit, modèles uniforme et gaussien sur le même graphique.
-- Courbes d'apprentissage de chaque modèle.
+- Déjà dans `results/` : `courbe_robustesse.png`, `courbe_robustesse_unif5.png`, `courbe_apprentissage_unif5.png`, `latent_map.png`, `latent_map_unif5.png`.
+- À produire : un graphique unique SI-SDR vs erreur de direction (beamformer, sans bruit, uniforme, gaussien) ; la courbe d'apprentissage du modèle sans bruit sur 100 époques (le fichier `courbe_apprentissage_model.png` a été écrasé par un essai à 1 époque et ne contient qu'un point) ; les cartes du latent du modèle gaussien.
 - Carte du latent : dense vs sparse, et sans bruit vs avec bruit d'azimut (uniforme, gaussien).
 
 ---
@@ -346,7 +372,7 @@ Erreur L1 de validation (azimut exact) pour contrôler que le bruit ne dégrade 
 C'est le compromis fondamental de ce projet : **plus on veut que le modèle soit robuste aux grandes erreurs de visée, plus il faut élargir son masque à l'entraînement, et plus il perd en directivité pure.**
 
 - **Sans bruit d'azimut**, le modèle FiLM est très sélectif : excellent si la direction demandée est exacte, mais il rejette la vraie voix dès que la consigne est décalée de quelques degrés. Il suppose donc un système de suivi (tracking) précis.
-- **Avec bruit d'azimut**, on lui montre des consignes imparfaites : il apprend à ouvrir son masque. Premier indice qualitatif : avec bruit uniforme ±5°, la carte du latent est plus étalée en azimut (§8.2), ce qui reste à confirmer par les courbes SI-SDR. On s'attend à une courbe plus plate, au prix d'un SI-SDR potentiellement plus faible à erreur nulle (modèle « moins chirurgical »).
+- **Avec bruit d'azimut**, on lui montre des consignes imparfaites : il apprend à ouvrir son masque. **Premier résultat (§8.3)** : avec un bruit uniforme ±5°, le gain reste modeste (≤ 0,6 dB entre 5° et 10°) et nul au-delà de 15° ; la courbe ne s'aplatit pas. Le bruit n'a d'effet que dans la plage vue à l'entraînement. On s'attend à une courbe plus plate, au prix d'un SI-SDR potentiellement plus faible à erreur nulle (modèle « moins chirurgical »).
 - **Uniforme vs gaussien** : l'uniforme garantit une robustesse homogène jusqu'à sa borne, le gaussien privilégie les petites erreurs réalistes et couvre mal les grandes. Le choix dépend du système de suivi visé.
 - **Limite de la comparaison** : le beamformer cardioïde est large par construction, donc peu sensible à l'erreur de visée mais aussi peu sélectif. Une baseline plus directive (hypercardioïde, ordre supérieur) donnerait une comparaison plus exigeante.
 
