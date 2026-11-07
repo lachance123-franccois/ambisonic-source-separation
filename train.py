@@ -17,8 +17,17 @@ from features import spatial_features, az_to_frames
 def compute_loss(model, batch, l1_weight, device):
     foa, target, az = batch["foa"].to(device), batch["target"].to(device), batch["az"].to(device)
     X = stft(foa)                                        # (B, 4, F, N)
-    feats = spatial_features(X)                          # (B, N, 3F)
+    feats = spatial_features(X)   
+#1)  Premier model                       # (B, N, 3F)
     az_frames = az_to_frames(az, X.shape[-1]) if model.conditioned else None
+    
+    #2 ) INTRODUCTION DU BRUUT UNIFORME/ GAUSSIEN dans les position a l'entrainement.
+    if model.conditioned:
+        bruit_angle = (torch.rand_like(az) * 10.0) - 5.0  # Génère une erreur aléatoire entre -5° et +5°
+        az_bruite = az + bruit_angle
+        az_frames = az_to_frames(az_bruite, X.shape[-1])
+    else:
+        az_frames = None
     mask, z = model(feats, az_frames)                    # (B, N, F), (B, N, latent)
 
     est_mag = mask.transpose(1, 2) * X[:, 0].abs()       # magnitude estimee (B, F, N)
@@ -102,7 +111,7 @@ def main():
         if va < best:
             best = va
             torch.save({"state": model.state_dict(), "cfg": cfg, "mode": args.mode},
-                       f"checkpoints/{args.name}.pt")
+                       f"checkpoints/{args.name}Uniform.pt")
     print(f"Meilleur modèle (val {best:.5f}) sauvegardé dans checkpoints/{args.name}.pt")
     
 
