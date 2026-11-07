@@ -22,7 +22,7 @@ def load_model(path):
     return model, ckpt["mode"]
 
 val_dir=r"C:\Users\AWOUNANG\Downloads\ambi-speaker-extraction\ambi-speaker-extraction\ambisonic-source-separation\TRAIN\LibriSpeech"
-model_dir=r"C:\Users\AWOUNANG\Downloads\ambi-speaker-extraction\ambi-speaker-extraction\ambisonic-source-separation\checkpoints\model.pt"
+model_dir=r"C:\Users\AWOUNANG\Downloads\ambi-speaker-extraction\ambi-speaker-extraction\ambisonic-source-separation\checkpoints\modelUniform.pt"
 
 def main():
     p = argparse.ArgumentParser()
@@ -84,9 +84,8 @@ def main():
     plt.tight_layout()
     
     # 3. Sauvegarder la figure
-    plt.savefig("results/courbe_robustesse.png", dpi=150)
+    plt.savefig("results/courbe_robustesseUniforme.png", dpi=150)
     plt.show()
-    print("Graphique de robustesse sauvegardé dans results/courbe_robustesse.png")
 
 
 if __name__ == "__main__":

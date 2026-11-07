@@ -19,7 +19,7 @@ from evaluate import load_model
 from features import stft, spatial_features
 from scenes import list_audio_files, load_audio, random_clip, normalize_rms
 
-model_dir=r"C:\Users\AWOUNANG\Downloads\ambi-speaker-extraction\ambi-speaker-extraction\ambisonic-source-separation\checkpoints\model.pt"
+model_dir=r"C:\Users\AWOUNANG\Downloads\ambi-speaker-extraction\ambi-speaker-extraction\ambisonic-source-separation\checkpoints\modelUniform.pt"
 data_dir=r"C:\Users\AWOUNANG\Downloads\ambi-speaker-extraction\ambi-speaker-extraction\ambisonic-source-separation\LibriSpeech"
 def main():
     p = argparse.ArgumentParser()
@@ -27,7 +27,7 @@ def main():
     p.add_argument("--ckpt", default=model_dir)
     p.add_argument("--n_clips", type=int, default=20)
     p.add_argument("--step", type=int, default=30, help="pas en degrés entre deux azimuts")
-    p.add_argument("--out", default="results/latent_map.png")
+    p.add_argument("--out", default="results/latent_mapuNIFORM.png")
     args = p.parse_args()
 
     model, _ = load_model(args.ckpt)
