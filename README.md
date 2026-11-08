@@ -1,44 +1,64 @@
 # Extraction de locuteur par direction d'arrivée sur signaux ambisoniques
 
-Projet pédagogique (PyTorch) : à partir d'une scène sonore enregistrée en **ambisonie du premier ordre** (FOA, 4 canaux) contenant deux locuteurs, extraire la voix qui vient d'une **direction donnée**, avec un **autoencodeur à masque dont l'espace latent est parcimonieux et conditionné par la direction visée**.
+Projet pédagogique (PyTorch). Une scène sonore enregistrée en **ambisonie du premier ordre** (FOA, 4 canaux) contient deux locuteurs. On veut extraire la voix qui vient d'une **direction donnée** avec un **autoencodeur à masque**, dont l'espace latent est **parcimonieux** (top-k) et **conditionné par la direction visée** (FiLM).
 
-Le projet compare cette approche à un **beamformer classique** (microphone virtuel cardioïde) et étudie en particulier sa **robustesse à l'erreur de direction**, y compris lorsque le modèle est entraîné avec un **bruit sur l'azimut visé** (uniforme ou gaussien).
+L'approche est comparée à deux **beamformers classiques** (microphones virtuels cardioïde et hypercardioïde). On étudie surtout sa **robustesse à une erreur de direction**, et l'effet d'un **bruit sur l'azimut visé** pendant l'entraînement : son amplitude, et sa forme (uniforme ou gaussienne).
 
 ---
 
 ## Sommaire
 
-1. [Question de recherche](#1-question-de-recherche)
-2. [Principe](#2-principe)
-3. [Structure du dépôt](#3-structure-du-dépôt)
-4. [Installation](#4-installation)
-5. [Données](#5-données)
-6. [Protocole expérimental](#6-protocole-expérimental)
-7. [Mesures](#7-mesures)
-8. [Résultats](#8-résultats)
-9. [Discussion : le compromis directivité / robustesse](#9-discussion--le-compromis-directivité--robustesse)
-10. [Limites](#10-limites)
-11. [Pistes d'extension](#11-pistes-dextension)
-12. [Dépannage (Windows / Spyder)](#12-dépannage-windows--spyder)
-13. [Références](#13-références)
+1. [Résumé des résultats](#1-résumé-des-résultats)
+2. [Question de recherche](#2-question-de-recherche)
+3. [Principe](#3-principe)
+4. [Structure du dépôt](#4-structure-du-dépôt)
+5. [Installation](#5-installation)
+6. [Données](#6-données)
+7. [Protocole expérimental](#7-protocole-expérimental)
+8. [Mesures](#8-mesures)
+9. [Résultats](#9-résultats)
+10. [Discussion](#10-discussion)
+11. [Points d'attention](#11-points-dattention)
+12. [Limites](#12-limites)
+13. [Pistes d'extension](#13-pistes-dextension)
+14. [Dépannage (Windows / Spyder)](#14-dépannage-windows--spyder)
+15. [Références](#15-références)
 
 ---
 
-## 1. Question de recherche
+## 1. Résumé des résultats
 
-1. Un autoencodeur peut-il apprendre à extraire une voix selon sa direction, et fait-il mieux qu'un simple microphone virtuel (beamformer) ?
+Les scènes contiennent deux locuteurs à 0 dB. Les mesures portent sur 200 scènes d'évaluation, les mêmes pour toutes les méthodes. Il n'y a qu'un seul entraînement par configuration.
+
+1. **La conclusion dépend de la statistique choisie.** Le beamformer cardioïde est **excellent sur une minorité de scènes** : sur 28 scènes sur 200, il dépasse 20 dB, et jusqu'à 53 dB. Ce sont les scènes où l'interférent tombe dans son zéro arrière. Sur la moitié des scènes, en revanche, il reste **sous 3,5 dB**. L'autoencodeur est **régulier** : son écart-type est d'environ 3 dB, contre 10,7 dB pour le cardioïde.
+   - En **moyenne**, le cardioïde gagne : 8,38 dB contre 7,93 dB pour le modèle sans bruit, à 0° d'erreur.
+   - En **médiane**, le modèle gagne nettement : 7,65 dB contre 3,46 dB.
+   - Le modèle bat le cardioïde sur **64 à 68 % des scènes**, quel que soit le bruit d'entraînement.
+2. **Le bruit d'azimut à l'entraînement fait apparaître le compromis directivité / robustesse.** Plus le bruit est large, plus le modèle tolère l'erreur de visée, et plus il perd à erreur nulle.
+   - La tolérance (erreur avant de perdre 3 dB en moyenne, pire des deux côtés) passe de **7,3°** sans bruit à **17,4°** avec N(0, 10²), puis à **plus de 30°** avec U(±30°).
+   - En contrepartie, le SI-SDR à 0° baisse de **0,9 dB** avec N(0, 10²) et de **1,45 dB** avec U(±30°).
+   - Avec U(±30°), la courbe est presque plate : de 6,3 à 6,5 dB entre −10° et +15°. Sa médiane bat celle des deux beamformers de −30° à +20°.
+3. **À variance égale, la forme du bruit (uniforme ou gaussien) ne change rien de mesurable** pour les erreurs positives. C'est l'**amplitude** qui compte. Attention : les modèles comparés n'ont pas tous le même nombre d'époques (§9.4).
+4. **Avec une direction de cible fixe et connue**, le modèle `fixed` bat le cardioïde : moyenne de 9,80 dB contre 8,34 dB, médiane de 9,48 dB contre 3,42 dB, et **75 % des scènes gagnées**.
+5. **L'hypercardioïde n'est pas une base plus exigeante que le cardioïde.** Son lobe arrière capte les interférents placés derrière. Sa moyenne est plus basse (5,96 dB contre 8,38 dB), mais sa médiane est plus haute (5,72 dB contre 3,46 dB).
+
+---
+
+## 2. Question de recherche
+
+1. Un autoencodeur peut-il apprendre à extraire une voix selon sa direction ? Fait-il mieux qu'un microphone virtuel (beamformer) ?
 2. Qu'apporte la **parcimonie** du latent ?
 3. Qu'apporte le **conditionnement** par la direction visée (FiLM) ?
 4. Le modèle suit-il des **sources mobiles** ?
-5. Quelle est sa **tolérance à une erreur de visée**, et peut-on l'améliorer en injectant du **bruit sur l'azimut pendant l'entraînement** ? Le type de bruit (uniforme ou gaussien) et son amplitude changent-ils la courbe de robustesse ?
+5. Quelle est sa **tolérance à une erreur de visée** ? Peut-on l'améliorer en injectant du **bruit sur l'azimut pendant l'entraînement** ? Est-ce l'**amplitude** ou la **forme** (uniforme / gaussienne) du bruit qui compte ?
 
 ---
 
-## 2. Principe
+## 3. Principe
 
 ### Ambisonie du 1er ordre (convention SN3D)
 
-Une source `s(t)` à l'azimut θ et à l'élévation φ est encodée en 4 canaux :
+Une source `s(t)` à l'azimut θ et à l'élévation φ est encodée sur 4 canaux :
 
 | Canal | Formule |
 |---|---|
@@ -47,63 +67,72 @@ Une source `s(t)` à l'azimut θ et à l'élévation φ est encodée en 4 canaux
 | Y | `s · sin θ · cos φ` |
 | Z | `s · sin φ` |
 
-θ = 0° : devant ; θ = 90° : à gauche. Une scène à deux locuteurs est la **somme** des deux encodages.
+θ = 0° correspond à l'avant et θ = 90° à la gauche. Une scène à deux locuteurs est la **somme** des deux encodages. Toutes les sources sont à élévation nulle, donc Z = 0 et ce canal n'est pas utilisé.
 
-### Descripteurs spatiaux
+### Descripteurs spatiaux (`features.py`)
 
-Pour une seule source dominante dans une case temps-fréquence, `Re(conj(W)·X)/|W|² ≈ cos θ` et `Re(conj(W)·Y)/|W|² ≈ sin θ`. Le modèle reçoit donc, pour chaque trame STFT, le niveau `log|W|` et ces deux rapports, soit 3 × 257 = 771 valeurs.
+Quand une seule source domine une case temps-fréquence, on a `Re(conj(W)·X)/|W|² ≈ cos θ` et `Re(conj(W)·Y)/|W|² ≈ sin θ`. Pour chaque trame STFT, le modèle reçoit donc le niveau `log(1+|W|)` et ces deux rapports, bornés à [−2, 2]. Cela fait 3 × 257 = 771 valeurs.
 
 ### Modèle (`models.py`)
 
 ```
 descripteurs d'une trame (771)
-        │  encodeur : Linear → ReLU → Linear → ReLU
+        │  encodeur : Linear(771→256) → ReLU → Linear(256→64) → ReLU
         ▼
-   latent z (64) ──[option sparse : L1 ou top-k]
+   latent z (64) ──[top-k : on garde les 8 plus grandes valeurs]
         │
-        ├──[option conditionné : FiLM]  h = (1 + γ(θ_visé)) · z + β(θ_visé)
+        ├──[mode conditionné : FiLM]  h = (1 + γ(θ_visé)) · z + β(θ_visé)
         ▼
-   décodeur : Linear → ReLU → Linear → Sigmoïde
+   décodeur : Linear(64→256) → ReLU → Linear(256→257) → Sigmoïde
         ▼
    masque (257)  ×  STFT du canal W  →  iSTFT  →  voix estimée
 ```
 
-La perte est une L1 entre la magnitude estimée et la magnitude de la vraie voix (+ une pénalité L1 sur le latent pour `--sparse l1`). Le conditionnement FiLM reçoit `(cos θ_visé, sin θ_visé)`, ce qui évite la discontinuité entre −180° et +180°.
+La perte est une L1 entre la magnitude estimée et la magnitude de la vraie voix. Le FiLM reçoit `(cos θ_visé, sin θ_visé)`, ce qui évite la discontinuité entre −180° et +180°. Le modèle traite chaque trame indépendamment, sans contexte temporel. Comme le masque est compris entre 0 et 1 et s'applique sur W avec la phase du mélange, la qualité atteignable est plafonnée : le modèle ne peut pas annuler complètement un interférent comme le fait un beamformer quand l'interférent est dans son zéro.
+
+### Bases de référence (`beamformer.py`)
+
+Un microphone virtuel orienté vers θ : `p · W + (1 − p) · (X cos θ + Y sin θ)`.
+
+- **Cardioïde** (`p = 0,5`) : gain 1 devant, **zéro exact à 180°**, lobe très large.
+- **Hypercardioïde** (`p = 0,25`) : plus étroit devant, zéros vers ±110°, mais **un lobe arrière** de gain 0,5.
 
 ### Les modes d'entraînement
 
-| Mode | Tâche | Étape |
+| Mode | Tâche | Scènes |
 |---|---|---|
-| `fixed` | Extraire la voix située **devant (0°)**, sans conditionnement | 2 (dense) et 3 (sparse) |
-| `conditioned` | Extraire la voix à l'**azimut demandé** (FiLM) | 4 (statique) et 5 (`--moving`) |
-| `conditioned` + bruit d'azimut | Idem, avec une consigne volontairement bruitée à l'entraînement | 6 |
+| `fixed` | Extraire la voix située **devant (0°)**, sans conditionnement | sources immobiles, cible à 0° |
+| `conditioned` | Extraire la voix à l'**azimut demandé** (FiLM) | sources mobiles, azimut quelconque |
+| `conditioned` + bruit | Idem, avec une consigne volontairement bruitée à l'entraînement | sources mobiles |
 
-### Bruit sur l'azimut visé (augmentation de données)
+### Bruit sur l'azimut visé (`sample_az_noise` dans `train.py`)
 
-À l'entraînement, la consigne donnée à FiLM est `θ_visé = θ_vrai + ε`, où `ε` est tiré au hasard :
+À l'entraînement, la consigne donnée au FiLM est `θ_visé = θ_vrai + ε` :
 
-| Type | Tirage | Effet attendu |
+| Type | Tirage | Écart-type de ε |
 |---|---|---|
-| Uniforme | `ε ~ U(−a, +a)` | Robustesse égale sur toute la plage `[−a, +a]`, frontière nette au-delà |
-| Gaussien | `ε ~ N(0, σ²)` | Robustesse surtout pour les petites erreurs, queue de plus en plus rare (modèle plus réaliste d'un capteur ou d'un tracker) |
+| uniforme | `ε ~ U(−a, +a)` | a / √3 |
+| gaussien | `ε ~ N(0, σ²)` | σ |
 
-Règle des trois sigmas : avec `σ = 3°`, 99,7 % des erreurs vues à l'entraînement sont dans `±9°`. Une erreur de 30° n'est quasiment jamais vue, et on ne doit donc pas s'attendre à une robustesse à 30°. Pour couvrir 30°, il faut `σ ≈ 10°` ou un bruit uniforme d'amplitude ≥ 30°.
+Le bruit est tiré indépendamment pour chaque échantillon, puis sous-échantillonné à une valeur par trame. Le modèle traite chaque trame séparément, donc ce choix équivaut, en espérance, à un décalage constant par clip. Ce ne serait plus vrai avec un modèle à contexte temporel. Le bruit n'est appliqué **qu'à l'entraînement** : la validation reçoit l'azimut exact.
 
 ---
 
-## 3. Structure du dépôt
+## 4. Structure du dépôt
 
 ```
 ambisonics.py       encodage FOA (W, X, Y, Z)
-scenes.py           scène à deux locuteurs + Dataset (partie « simulation », à personnaliser)
-features.py         STFT / iSTFT, descripteurs spatiaux
-beamformer.py       base de référence classique (micro virtuel cardioïde)
+scenes.py           scène à deux locuteurs + Dataset généré à la volée
+features.py         STFT / iSTFT, descripteurs spatiaux, azimut par trame
+beamformer.py       micros virtuels cardioïde et hypercardioïde
 models.py           autoencodeur à masque (dense / sparse / FiLM)
 metrics.py          SI-SDR
-train.py            entraînement (courbes train / validation, option de bruit d'azimut)
-evaluate.py         SI-SDR avant / beamformer / modèle, robustesse à l'erreur de direction
-analyze_latent.py   carte « dimensions du latent × azimut »
-config.py           constantes globales (SR = 16 kHz, clip de 2 s, N_FFT = 512, HOP = 128)
+train.py            entraîne les expériences de la liste EXPERIENCES + courbes de perte
+evaluate.py         SI-SDR de chaque scène pour chaque .pt de checkpoints/ (option miroir)
+plot_results.py     résumé (moyenne, médiane, % gagné, IC), tolérances, asymétrie, figures
+analyze_latent.py   carte « dimensions du latent × azimut » pour chaque .pt
+config.py           constantes (signal, paramètres des scènes, dossiers de données)
+conftest.py         permet à pytest de trouver les modules depuis tests/
 tests/              tests unitaires (pytest)
 checkpoints/        modèles sauvegardés (.pt)
 results/            CSV et figures produits par les scripts
@@ -111,314 +140,410 @@ results/            CSV et figures produits par les scripts
 
 ---
 
-## 4. Installation
+## 5. Installation
 
 ```bash
 python -m venv .venv && source .venv/bin/activate     # Windows : .venv\Scripts\activate
 pip install -r requirements.txt
-pytest            # vérifie l'encodage, le beamformer, le SI-SDR, la STFT et le modèle
+pytest
 ```
 
-Dépendances : `torch`, `numpy`, `scipy`, `soundfile`, `matplotlib`, `pandas` (pour tracer les courbes d'évaluation), `pytest`.
+### Dossiers de données
+
+Les chemins sont définis dans `config.py`, **relativement au dossier du projet** :
+
+| Constante | Dossier par défaut | Variable d'environnement pour le changer |
+|---|---|---|
+| `TRAIN_DIR` | `LibriSpeech/` | `AMBI_TRAIN_DIR` |
+| `VAL_DIR` | `TRAIN/LibriSpeech/` | `AMBI_VAL_DIR` |
+| `TEST_DIR` | `TEST/LibriSpeech/` | `AMBI_TEST_DIR` |
+
+Si `TEST/LibriSpeech/` n'existe pas, `evaluate.py` et `analyze_latent.py` se rabattent sur le dossier de validation et affichent un avertissement.
 
 ---
 
-## 5. Données
+## 6. Données
 
-Il faut un dossier de fichiers audio de parole (`.flac` ou `.wav`, mono). Les scènes sont fabriquées à la volée par `scenes.py` : deux locuteurs **différents**, clips de 2 s, même niveau (SIR = 0 dB), directions séparées d'au moins 30°. Si le dossier est organisé en `locuteur/chapitre/fichier` (comme LibriSpeech), le code évite de mélanger deux fois le même locuteur. Les fichiers qui ne sont pas à 16 kHz sont rééchantillonnés automatiquement.
+Il faut un dossier de fichiers audio de parole (`.flac` ou `.wav`, mono). Les scènes sont fabriquées à la volée par `scenes.py` :
 
-Utiliser des dossiers **séparés** pour l'entraînement et la validation/test, avec des **locuteurs différents** :
+- deux locuteurs **différents** (si le dossier suit l'organisation `locuteur/chapitre/fichier` de LibriSpeech) ;
+- des clips de 2 s, au même niveau RMS (SIR = 0 dB) ;
+- un rééchantillonnage automatique à 16 kHz si besoin ;
+- un interférent à `az2 = az1 + U(MIN_SEP_DEG, 360 − MIN_SEP_DEG)`, avec **`MIN_SEP_DEG = −90`** dans `config.py`. C'est la valeur de tous les résultats ci-dessous. Elle ne garantit **aucun écart minimal** entre les deux locuteurs. De plus, l'intervalle couvre 540° : les interférents situés à moins de 90° de la cible sont **deux fois plus probables** que les autres ;
+- en mode mobile, chaque locuteur se déplace linéairement d'au plus **90°** pendant le clip (`MAX_MOVE_DEG = 90`).
+
+Pour des scènes avec un écart minimal de 30°, on met `MIN_SEP_DEG = 30`. Il faut alors **tout ré-entraîner et ré-évaluer**.
+
+Il faut des dossiers **séparés** pour l'entraînement, la validation et le test, avec des **locuteurs différents** :
 
 | Usage | Corpus conseillé (Mini LibriSpeech, OpenSLR SLR31) | Taille |
 |---|---|---|
 | Entraînement | `train-clean-5` | ~332 Mo |
-| Validation / test | `dev-clean-2` | ~126 Mo |
-
-Pour un travail plus solide : `train-clean-100` pour entraîner et `test-clean` pour évaluer (SLR12).
-
-> Si `--val_dir` est omis, la validation réutilise les fichiers d'entraînement : les scènes diffèrent mais les voix restent les mêmes, ce qui biaise l'erreur de validation.
+| Validation | `dev-clean-2` | ~126 Mo |
+| Test | `test-clean` (SLR12) ou une partie de `dev-clean-2` avec d'autres locuteurs | |
 
 ---
 
-## 6. Protocole expérimental
+## 7. Protocole expérimental
 
-Remplacer `DATA_TRAIN` et `DATA_TEST` par les dossiers voulus. Les scripts utilisent des valeurs par défaut modifiables en tête de fichier, ce qui permet de les lancer sans terminal (bouton Play de Spyder).
+Les valeurs par défaut sont lues dans `config.py`. On peut donc lancer les scripts sans argument, avec le bouton Play de Spyder.
 
-### Étape 1 — Base de référence (sans apprentissage)
-
-Le beamformer est évalué à chaque appel de `evaluate.py` (colonne `sisdr_beamformer`).
-
-### Étape 2 — Autoencodeur dense
+### 7.1 Entraînement
 
 ```bash
-python train.py --data_dir DATA_TRAIN --val_dir DATA_VAL --mode fixed --sparse none --name dense
-python evaluate.py --data_dir DATA_TEST --ckpt checkpoints/dense.pt --out results/dense.csv
+python train.py                          # toutes les expériences dont le .pt manque
+python train.py --only model_cond_gauss10 model_cond_unif30
+python train.py --epochs 60              # nombre d'époques
+python train.py --seed 1                 # autre graine -> checkpoints suffixés _s1
+python train.py --retrain                # ré-entraîne même si le .pt existe
 ```
 
-### Étape 3 — Autoencodeur sparse
+`train.py` parcourt la liste `EXPERIENCES` et **ignore les checkpoints déjà présents**. Réglages communs : latent top-k (k = 8 sur 64), taux d'apprentissage 1e-3, 2000 scènes par époque, graine 0.
+
+| Checkpoint | Mode | Bruit d'azimut | Écart-type | Époques (campagne actuelle) | Meilleure val. (L1) |
+|---|---|---|---|---|---|
+| `model_fixed_none` | `fixed` | – | – | 100 | 0,155 |
+| `model_cond_none` | `conditioned` | aucun | 0° | 100 | 0,205 |
+| `model_cond_Uniform` | `conditioned` | U(±5°) | 2,9° | 100 | 0,206 |
+| `model_cond_gauss2p9` | `conditioned` | N(0, 2,89²) | 2,9° | **60** | 0,212 (ép. 56) |
+| `model_cond_gaussian` | `conditioned` | N(0, 5²) | 5° | 100 | 0,209 |
+| `model_cond_unif8p7` | `conditioned` | U(±8,66°) | 5° | **60** | 0,215 (ép. 59) |
+| `model_cond_gauss10` | `conditioned` | N(0, 10²) | 10° | **60** | 0,227 (ép. 59) |
+| `model_cond_unif30` | `conditioned` | U(±30°) | 17,3° | **60** | 0,246 (ép. 57) |
+
+Les paires `Uniform` / `gauss2p9` et `gaussian` / `unif8p7` ont le **même écart-type** : elles servent à isoler l'effet de la forme du bruit.
+
+### 7.2 Évaluation
 
 ```bash
-python train.py --data_dir DATA_TRAIN --val_dir DATA_VAL --mode fixed --sparse topk --topk 8 --name sparse_topk
-python train.py --data_dir DATA_TRAIN --val_dir DATA_VAL --mode fixed --sparse l1 --l1_weight 0.01 --name sparse_l1
-python evaluate.py --data_dir DATA_TEST --ckpt checkpoints/sparse_topk.pt --out results/sparse_topk.csv
-python analyze_latent.py --data_dir DATA_TEST --ckpt checkpoints/sparse_topk.pt
-python analyze_latent.py --data_dir DATA_TEST --ckpt checkpoints/dense.pt --out results/latent_dense.png
+python evaluate.py                 # scènes mobiles, erreurs de -30° à +30°
+python evaluate.py --mirror        # + chaque scène en miroir gauche / droite (temps x2)
+python evaluate.py --static        # modèles conditionnés sur scènes immobiles
 ```
 
-### Étape 4 — Conditionnement par la direction
+Tous les `.pt` du dossier `checkpoints/` sont évalués sur les **mêmes scènes** (`--seed 999`). Les modèles `fixed` sont toujours testés sur des scènes immobiles, cible à 0°. Les deux beamformers reçoivent la même direction fautive que le modèle. `evaluate.py` enregistre le SI-SDR **de chaque scène**, puis appelle `plot_results.py`.
+
+Pour refaire le résumé et les figures sans ré-évaluer :
 
 ```bash
-python train.py --data_dir DATA_TRAIN --val_dir DATA_VAL --mode conditioned --sparse topk --name cond
-python evaluate.py --data_dir DATA_TEST --ckpt checkpoints/cond.pt \
-                   --az_errors 0 10 20 45 90 --out results/cond.csv
+python plot_results.py --per_scene results/eval_par_scene.csv
 ```
 
-`--az_errors` ajoute une erreur à la direction demandée : l'extraction marche-t-elle encore quand on vise à côté ? Le beamformer reçoit la même direction fautive, la comparaison reste équitable.
+| Sortie | Contenu |
+|---|---|
+| `eval_par_scene.csv` | SI-SDR de chaque scène, pour chaque modèle et chaque erreur (+ colonne `mirror`) |
+| `eval_comparatif.csv` | par (modèle, erreur) : moyenne, médiane, moyenne plafonnée à 30 dB, % de scènes gagnées contre chaque beamformer, IC 95 % |
+| `tolerance.csv` | tolérance `e*`, sur la moyenne et sur la médiane, pour les erreurs positives et négatives |
+| `asymetrie.csv` | SI-SDR(−e) − SI-SDR(+e), apparié par scène, avec IC 95 % |
+| `robustesse_amplitude.png` | SI-SDR selon l'erreur (moyenne et médiane), pour la série d'amplitudes de bruit |
+| `forme_variance_egale.png` | écart apparié gaussien − uniforme à variance égale |
+| `compromis.png` | SI-SDR à 0° en fonction de la tolérance |
+| `victoires.png` | % de scènes où le modèle bat le cardioïde |
+| `distribution_0deg.png` | distribution des SI-SDR par scène à 0° |
+| `fixe_vs_beamformer.png` | modèle `fixed` contre cardioïde, sur scènes immobiles |
 
-### Étape 5 — Sources mobiles
+### 7.3 Analyse du latent
 
 ```bash
-python train.py --data_dir DATA_TRAIN --val_dir DATA_VAL --mode conditioned --sparse topk --moving --name cond_moving
-python evaluate.py --data_dir DATA_TEST --ckpt checkpoints/cond_moving.pt --moving \
-                   --az_errors 0 2 5 10 15 20 30 --out results/cond_moving.csv
+python analyze_latent.py --n_clips 20 --step 30
 ```
 
-Chaque locuteur se déplace linéairement d'au plus 60° pendant le clip (`max_move_deg` dans `scenes.py`).
-
-### Étape 6 — Robustesse : bruit sur l'azimut à l'entraînement
-
-On entraîne plusieurs variantes de l'étape 5 qui ne diffèrent que par le bruit injecté sur la consigne d'azimut, puis on les évalue avec **la même** liste `--az_errors`.
-
-| Nom du modèle | Bruit à l'entraînement | Paramètre |
-|---|---|---|
-| `cond_moving` | aucun (référence de l'étape 5) | – |
-| `cond_moving_unif5` | uniforme | `a = 5°` |
-| `cond_moving_unif15` | uniforme | `a = 15°` |
-| `cond_moving_unif30` | uniforme | `a = 30°` |
-| `cond_moving_gauss3` | gaussien | `σ = 3°` |
-| `cond_moving_gauss10` | gaussien | `σ = 10°` |
-
-Extrait du code d'entraînement (`compute_loss` dans `train.py`). **Un seul décalage par clip**, constant sur la durée, pour simuler une erreur de tracker plutôt qu'un bruit blanc sur l'angle :
-
-```python
-if model.conditioned and az_noise != "none":
-    shape = (az.shape[0],) + (1,) * (az.dim() - 1)       # une erreur par clip
-    if az_noise == "uniform":
-        eps = (torch.rand(shape, device=az.device) * 2 - 1) * az_noise_scale   # U(-a, +a)
-    else:  # "gauss"
-        eps = torch.randn(shape, device=az.device) * az_noise_scale            # N(0, sigma^2)
-    az_in = az + eps
-else:
-    az_in = az
-az_frames = az_to_frames(az_in, X.shape[-1]) if model.conditioned else None
-```
-
-Points de protocole importants :
-
-- **Le bruit ne s'applique qu'à l'entraînement.** La validation (`run_epoch` avec `optimizer=None`) doit utiliser l'azimut exact, sinon l'erreur de validation n'est plus comparable d'un modèle à l'autre ni à celle du modèle de référence.
-- **Même graine, mêmes données, même nombre d'époques** pour toutes les variantes : seule la distribution du bruit change.
-- **Même jeu d'évaluation** (`--seed` identique, `--moving` activé, mêmes `--az_errors`) pour toutes les variantes.
-- Évaluer aussi avec des erreurs **négatives** (par exemple −30, −10) : un biais de signe éventuel serait invisible sinon.
-
-```bash
-python evaluate.py --data_dir DATA_TEST --ckpt checkpoints/cond_moving_gauss10.pt --moving \
-                   --az_errors 0 2 5 10 15 20 30 --out results/cond_moving_gauss10.csv
-```
+Pour chaque modèle, le script encode 20 clips **d'une seule source** à chaque azimut, de −180° à +150° par pas de 30°. Il moyenne ensuite le latent **avant FiLM**. Sortie : `results/latent_map_<nom>.png`.
 
 ---
 
-## 7. Mesures
+## 8. Mesures
 
-- **SI-SDR** (dB) avant extraction (canal W brut) et après : `sisdr_input`, `sisdr_beamformer`, `sisdr_model`.
-- **Amélioration** : `improvement_beamformer`, `improvement_model` (SI-SDR après − avant).
-- **Erreur de direction** : SI-SDR en fonction de `az_error_deg`.
-- **Largeur de tolérance** : plus grande erreur `e*` telle que `sisdr_model(e*) ≥ sisdr_model(0) − 3 dB`.
-- **Dense vs sparse**, **modèle appris vs beamformer**, **avec vs sans bruit d'azimut**, **uniforme vs gaussien**.
-- **Carte du latent** : dimensions actives selon l'azimut (`analyze_latent.py`), avec la fraction de (dimension, azimut) actifs.
-- **Courbes d'apprentissage** : erreur L1 d'entraînement et de validation par époque (`results/courbe_apprentissage_<nom>.png`).
-
-### Cas d'échec à examiner
-
-Directions voisines (`min_sep_deg` dans `scenes.py`), forte réverbération (à ajouter dans `scenes.py`), locuteurs trop proches, trajectoires qui se croisent.
+- **SI-SDR** (dB) du canal W brut (`sisdr_input`), des deux beamformers et du modèle, **pour chaque scène**.
+- **Moyenne** : la statistique habituelle, mais très sensible aux scènes où le beamformer dépasse 20 dB.
+- **Médiane** : ce qu'obtient une scène « typique ».
+- **Moyenne plafonnée à 30 dB** : chaque scène est limitée à 30 dB avant de faire la moyenne. Cela réduit le poids des scènes exceptionnelles.
+- **% de scènes gagnées** : part des scènes où le modèle obtient un meilleur SI-SDR que le beamformer.
+- **IC 95 %** : bootstrap sur les scènes (2000 tirages). Les écarts entre méthodes sont **appariés** : on rééchantillonne les mêmes scènes pour les deux.
+- **Tolérance `e*`** : plus grande erreur telle que `SI-SDR(e*) ≥ SI-SDR(0) − 3 dB`, par interpolation linéaire. Elle est calculée sur la moyenne et sur la médiane, pour les erreurs positives et négatives. « Pire des deux côtés » désigne la plus petite des deux.
+- **Asymétrie** : SI-SDR(−e) − SI-SDR(+e) par scène. Avec `--mirror`, chaque scène est aussi évaluée en miroir. L'asymétrie due au jeu de scènes disparaît alors, et ce qui reste est propre au modèle.
+- **Carte du latent** : activation moyenne de chaque dimension selon l'azimut, avec la fraction de couples (dimension, azimut) actifs.
 
 ---
 
-## 8. Résultats
+## 9. Résultats
 
-### 8.1 Résultats déjà obtenus (sans bruit d'azimut)
+Campagne actuelle : 8 modèles, 200 scènes d'évaluation (graine 999), sources mobiles pour les modèles conditionnés. Fichiers : `results/eval_par_scene.csv`, `eval_comparatif.csv`, `tolerance.csv`, `asymetrie.csv`.
 
-Corpus : `train-clean-5` (entraînement), `dev-clean-2` (validation), mélanges à 0 dB, évaluation sur 200 scènes.
+> **Jeu de test** : le cardioïde donne exactement les mêmes valeurs que lors de la campagne précédente. L'évaluation s'est donc très probablement faite sur le dossier de **validation**, faute de dossier `TEST/LibriSpeech/`. Les locuteurs testés sont alors ceux qui ont servi à choisir les checkpoints. Ce biais est léger, et identique pour tous les modèles, mais il reste à corriger.
 
-**Courbes d'apprentissage (perte L1 sur la magnitude)**
+### 9.1 Moyenne contre médiane : le beamformer est « tout ou rien »
 
-| Modèle | Époques | Erreur train finale | Meilleure erreur validation |
-|---|---|---|---|
-| AE sparse top-k, `fixed` | 50 | 0,130 | 0,138 |
-| AE sparse top-k, conditionné (FiLM), sources mobiles | 100 | 0,197 | 0,204 |
+![Distribution des SI-SDR par scène](results/distribution_0deg.png)
 
-La tâche conditionnée et mobile est plus difficile, ce qui explique une erreur plus élevée. L'écart train / validation reste faible dans les deux cas : pas de surapprentissage marqué.
+À 0° d'erreur (sources mobiles) :
 
-**SI-SDR (dB), erreur de visée nulle**
-
-| Méthode | Scène | SI-SDR entrée | SI-SDR sortie | Amélioration |
+| Méthode | Moyenne | Médiane | Moyenne plafonnée à 30 dB | Scènes gagnées par le modèle |
 |---|---|---|---|---|
-| Beamformer cardioïde | sources fixes, cible à 0° | −0,01 | 14,26 | +14,26 |
-| AE sparse top-k (`fixed`) | sources fixes, cible à 0° | −0,01 | 11,15 | +11,16 |
-| Beamformer cardioïde | sources fixes, azimut quelconque | −0,01 | 9,62 | +9,62 |
-| AE conditionné (FiLM) | sources fixes, azimut quelconque | −0,01 | 8,07 | +8,08 |
-| Beamformer cardioïde | sources mobiles | −0,01 | 8,38 | +8,38 |
-| AE conditionné (FiLM) | sources mobiles | −0,01 | 7,96 | +7,97 |
+| Cardioïde | **8,38** | 3,46 | 7,80 | – |
+| Hypercardioïde | 5,96 | 5,72 | 5,96 | – |
+| AE sans bruit | 7,93 | 7,65 | 7,93 | 66 % contre le cardioïde, 74 % contre l'hypercardioïde |
+| AE U(±5°) | 7,92 | **7,97** | 7,92 | 68 % / 74 % |
+| AE N(0, 5²) | 7,82 | 7,77 | 7,82 | 68 % / 74 % |
+| AE N(0, 10²) | 7,00 | 7,12 | 7,00 | 65 % / 71 % |
+| AE U(±30°) | 6,47 | 6,74 | 6,47 | 64 % / 64 % |
 
-**Robustesse à l'erreur de visée, sources mobiles, modèle sans bruit d'azimut**
+- Le cardioïde a une distribution très étalée : un écart-type de **10,7 dB**, 28 scènes au-dessus de 20 dB et un maximum à 53 dB. Ce sont les scènes où l'interférent passe dans son **zéro arrière**, ce qui donne un rejet presque parfait. Sur la moitié des scènes, il reste **sous 3,5 dB**.
+- Le modèle est **régulier** : son écart-type est d'environ 3 dB. Le modèle sans bruit ne dépasse pas 21 dB, et aucun modèle ne dépasse 26 dB. Son masque est plafonné, donc il ne profite jamais de ces cas parfaits, mais il n'a presque pas de scènes ratées.
+- **Plafonner à 30 dB ne suffit pas à inverser la moyenne** (7,80 dB pour le cardioïde contre 7,93 dB pour le modèle sans bruit) : beaucoup de scènes du cardioïde se situent entre 20 et 30 dB.
+- **La bonne lecture** : le modèle est **meilleur sur deux scènes sur trois**, et le cardioïde l'emporte en moyenne grâce à une minorité de scènes géométriquement favorables. Dans une vraie salle, la réverbération empêcherait ces rejets parfaits à 30 dB ou plus. **Il faut donc rapporter la moyenne ET la médiane.**
 
-| Erreur d'azimut (°) | 0 | 2 | 5 | 10 | 15 | 20 | 30 |
+### 9.2 Robustesse à l'erreur de visée, selon l'amplitude du bruit
+
+![Robustesse selon l'amplitude du bruit](results/robustesse_amplitude.png)
+
+**SI-SDR moyen (dB)**
+
+| Erreur | sans bruit | U(±5°) | N(0, 5²) | N(0, 10²) | U(±30°) | Cardioïde | Hypercardioïde |
 |---|---|---|---|---|---|---|---|
-| Beamformer (dB) | 8,38 | 8,44 | 8,65 | 8,54 | 8,28 | 8,05 | 7,72 |
-| AE conditionné (dB) | 7,96 | 7,81 | 6,61 | 4,04 | 2,32 | 0,96 | −1,64 |
+| −30° | −3,37 | −2,69 | −2,18 | 0,30 | 3,56 | **7,31** | 5,26 |
+| −10° | 3,48 | 5,77 | 6,20 | 6,17 | 6,26 | **8,11** | 5,92 |
+| 0° | 7,93 | 7,92 | 7,82 | 7,00 | 6,47 | **8,38** | 5,96 |
+| +10° | 4,19 | 5,25 | 6,04 | 6,88 | 6,46 | **8,54** | 6,17 |
+| +20° | 0,72 | 1,03 | 1,75 | 5,45 | 5,99 | **8,05** | 6,13 |
+| +30° | −1,88 | −1,79 | −1,35 | 2,52 | 4,27 | **7,72** | 6,08 |
 
-Figure : `results/courbe_robustesse.png`. Le beamformer cardioïde, dont le lobe est large, est presque insensible à l'erreur de visée ; l'autoencodeur est très directif et perd environ 1,3 dB à 5°, puis environ 4 dB à 10°.
+**SI-SDR médian (dB)**
 
-**Carte du latent** (`results/latent_map.png`) : la parcimonie imposée (fraction active ≈ 0,28) est visible, et l'activation de certaines dimensions se déplace avec l'azimut (structure en « diagonale »), ce qui suggère un codage de la direction par des dimensions spécialisées.
+| Erreur | sans bruit | U(±5°) | N(0, 5²) | N(0, 10²) | U(±30°) | Cardioïde | Hypercardioïde |
+|---|---|---|---|---|---|---|---|
+| −30° | −1,58 | −0,56 | 0,11 | 1,78 | **5,13** | 2,89 | 4,74 |
+| −10° | 4,84 | 6,41 | **6,84** | 6,64 | 6,66 | 3,40 | 5,32 |
+| 0° | 7,65 | **7,97** | 7,77 | 7,12 | 6,74 | 3,46 | 5,72 |
+| +10° | 4,90 | 5,90 | 6,46 | **7,03** | 6,66 | 3,75 | 5,90 |
+| +20° | 1,82 | 2,22 | 2,86 | 6,17 | **6,41** | 4,02 | 5,83 |
+| +30° | −0,08 | −0,19 | 0,28 | 4,04 | 5,34 | 4,13 | **5,77** |
 
-### 8.2 Structure du latent : sans bruit vs bruit uniforme ±5°
+![Scènes gagnées contre le cardioïde](results/victoires.png)
 
-Cartes obtenues avec `analyze_latent.py` (20 clips, un azimut tous les 30°). Les dimensions sont triées par azimut préféré, donc **la forme en diagonale est en partie imposée par le tri** : ce qui est informatif, c'est le nombre de dimensions actives, la largeur en azimut de chaque dimension et les raies isolées.
+**Part des scènes où le modèle bat le cardioïde (%)**
 
-| Sans bruit d'azimut | Bruit uniforme ±5° |
-|---|---|
-| ![Carte du latent sans bruit](results/latent_map.png) | ![Carte du latent avec bruit uniforme](results/latent_map_unif5.png) |
+| Erreur | sans bruit | U(±5°) | N(0, 5²) | N(0, 10²) | U(±30°) |
+|---|---|---|---|---|---|
+| −30° | 8 | 11 | 10 | 18 | 32 |
+| −10° | 39 | 53 | 57 | 61 | 64 |
+| 0° | 66 | 68 | 68 | 65 | 64 |
+| +10° | 42 | 50 | 57 | 66 | 66 |
+| +20° | 16 | 16 | 20 | 52 | 57 |
+| +30° | 8 | 8 | 8 | 22 | 34 |
 
-| | Sans bruit | Uniforme ±5° |
-|---|---|---|
-| Activation moyenne maximale (échelle de couleur) | ≈ 93 | ≈ 59 |
-| Dimensions actives | environ 0 à 25, plus **deux raies isolées vers les dimensions 50 et 61**, aux azimuts extrêmes (≈ ±150° à 180°) | environ 0 à 29, **rien au-delà** |
-| Forme | diagonale avec raies fines | diagonale plus régulière et plus compacte |
-| Continuité circulaire (−180° / +150°) | dimensions 50 et 61 actives aux deux extrémités | dimensions 0 et 1 actives aux deux extrémités |
+**Écarts appariés par rapport au modèle sans bruit (dB, moyenne [IC 95 %])**
 
-**Observations**
-
-- Avec le bruit, **l'activité est regroupée dans les ≈ 30 premières dimensions** et les raies isolées à haut indice disparaissent. L'activation maximale est plus faible (attention : les échelles de couleur sont différentes, on ne compare pas les teintes).
-- La diagonale reste **étroite** : chaque dimension couvre environ une à trois cases de 30°. **Je ne vois pas d'élargissement net** des réponses en azimut avec le bruit ±5°.
-- Les deux cartes montrent une continuité entre −180° et +150° (mêmes dimensions actives aux deux bords), ce qui est cohérent avec un codage de l'azimut sur un cercle.
-
-**À ne pas sur-interpréter** : le latent est calculé **avant** FiLM, donc la consigne bruitée ne le modifie pas directement. Cette carte ne mesure ni la qualité audio ni la robustesse, qui sont dans la section 8.3. Une carte, un modèle, une graine : les différences visibles peuvent aussi venir de l'initialisation.
-
-### 8.3 Effet du bruit d'azimut sur le SI-SDR (modèle uniforme ±5° renseigné, autres à compléter)
-
-SI-SDR (dB) en fonction de l'erreur de visée, sources mobiles, mêmes scènes d'évaluation pour toutes les lignes.
-
-| Modèle | Bruit | 0° | 2° | 5° | 10° | 15° | 20° | 30° | Tolérance `e*` (−3 dB) |
-|---|---|---|---|---|---|---|---|---|---|
-| Beamformer cardioïde | – | 8,38 | 8,44 | 8,65 | 8,54 | 8,28 | 8,05 | 7,72 | > 30° |
-| `cond_moving` | aucun | 7,96 | 7,81 | 6,61 | 4,04 | 2,32 | 0,96 | −1,64 | ≈ 8,2° |
-| `cond_moving_unif5` | U(±5°) | 8,08 | 7,91 | 7,09 | 4,64 | 2,54 | 0,89 | −1,95 | ≈ 9,1° |
-| `cond_moving_unif15` | U(±15°) | | | | | | | | |
-| `cond_moving_unif30` | U(±30°) | | | | | | | | |
-| `cond_moving_gauss3` | N(0, 3°) | | | | | | | | |
-| `cond_moving_gauss10` | N(0, 10°) | | | | | | | | |
-
-| Sans bruit | Bruit uniforme ±5° |
-|---|---|
-| ![Robustesse sans bruit](results/courbe_robustesse.png) | ![Robustesse avec bruit uniforme](results/courbe_robustesse_unif5.png) |
-
-Écart `unif5 − sans bruit` (dB) : **+0,12 (0°), +0,10 (2°), +0,48 (5°), +0,59 (10°), +0,22 (15°), −0,07 (20°), −0,31 (30°)**. La tolérance `e*` (perte de 3 dB par rapport à 0°, interpolation linéaire) passe de ≈ 8,2° à ≈ 9,1°. Le beamformer est identique dans les deux évaluations (même graine, mêmes scènes).
+| Erreur | N(0, 10²) − sans bruit | U(±30°) − sans bruit | U(±30°) − N(0, 10²) |
+|---|---|---|---|
+| −30° | +3,67 [+3,03 ; +4,37] | +6,94 [+6,00 ; +7,97] | +3,27 [+2,62 ; +3,93] |
+| 0° | **−0,93** [−1,15 ; −0,73] | **−1,45** [−1,76 ; −1,15] | −0,53 [−0,74 ; −0,33] |
+| +10° | +2,69 [+2,18 ; +3,19] | +2,27 [+1,80 ; +2,77] | −0,42 [−0,58 ; −0,25] |
+| +20° | +4,73 [+4,06 ; +5,43] | +5,27 [+4,51 ; +6,05] | +0,54 [+0,32 ; +0,78] |
+| +30° | +4,40 [+3,70 ; +5,17] | +6,15 [+5,26 ; +7,08] | +1,75 [+1,39 ; +2,12] |
 
 **Lecture**
 
-- Le bruit uniforme ±5° donne un **gain modeste (≤ 0,6 dB) autour de 5° à 10°**, c'est-à-dire juste à la limite de la plage vue à l'entraînement, et **aucun gain au-delà de 15°**. Le modèle reste très en dessous du beamformer dès 5° d'erreur et passe sous 0 dB vers 20° à 30° : **la courbe ne s'aplatit pas**.
-- Aucun coût de directivité visible à erreur nulle (8,08 dB contre 7,96 dB), mais l'écart est petit.
-- **Prudence statistique** : 200 scènes, une graine, un seul entraînement par configuration. Des écarts de 0,1 à 0,6 dB ne sont pas démontrés significatifs. Il faut répéter avec plusieurs graines (ou calculer un intervalle de confiance par bootstrap sur les scènes) avant de conclure.
-- Cohérent avec la règle des trois sigmas et la plage d'entraînement : pour couvrir 20° à 30°, il faut un bruit d'amplitude comparable (`unif15`, `unif30`, `gauss10`), à tester.
+1. **Sans bruit, le modèle est très directif.** Il perd 3,7 dB en moyenne à +10°, et passe sous le SI-SDR du mélange brut au-delà de 20°.
+2. **Un bruit faible (écart-type ≤ 5°) aide peu**, et seulement dans la plage vue à l'entraînement : de +1 à +2 dB autour de 10°, rien au-delà de 20°.
+3. **Un bruit large change la forme de la courbe.**
+   - Avec N(0, 10²), le modèle reste au-dessus de 6,8 dB de 0° à +10°, et à 5,45 dB à +20°.
+   - Avec U(±30°), la courbe est presque plate : de 6,3 à 6,5 dB entre −10° et +15°, puis 6,0 dB à +20°.
+4. **Le coût est réel et significatif** : −0,9 dB à 0° pour N(0, 10²) et −1,45 dB pour U(±30°). C'est le compromis attendu (§10).
+5. **Contre le cardioïde** :
+   - en moyenne, aucun modèle ne le bat, quelle que soit l'erreur ;
+   - en médiane et en part de scènes gagnées, les modèles à bruit large (N(0, 10²) et U(±30°)) le battent **de −10° à +20°**. Leur médiane bat aussi l'hypercardioïde dans cette plage.
 
-Courbe d'apprentissage du modèle `cond_moving_unif5` (100 époques) :
+### 9.3 Le compromis directivité / robustesse
 
-![Courbe d'apprentissage avec bruit uniforme](results/courbe_apprentissage_unif5.png)
+![Compromis](results/compromis.png)
 
-Erreur L1 finale ≈ 0,20 (entraînement) et ≈ 0,21 (validation), lecture graphique. L'écart train / validation reste faible. **Attention** : dans la version actuelle de `compute_loss`, le bruit d'azimut est aussi appliqué à la validation, donc cette erreur de validation est mesurée avec des consignes bruitées et n'est pas strictement comparable à celle du modèle sans bruit (0,204).
+| Modèle | Écart-type du bruit | Moyenne à 0° | Médiane à 0° | `e*` moyenne (+ / −) | `e*` médiane (+ / −) |
+|---|---|---|---|---|---|
+| sans bruit | 0° | **7,93** | 7,65 | 8,6° / 7,3° | 10,7° / 10,6° |
+| U(±5°) | 2,9° | 7,92 | **7,97** | 10,7° / 12,0° | 12,2° / 14,1° |
+| N(0, 2,9²)* | 2,9° | 7,41 | 7,14 | 11,8° / 10,2° | 13,7° / 13,1° |
+| N(0, 5²) | 5° | 7,82 | 7,77 | 12,7° / 13,3° | 14,4° / 16,2° |
+| U(±8,7°)* | 5° | 7,34 | 7,28 | 13,3° / 14,4° | 15,4° / 16,6° |
+| N(0, 10²)* | 10° | 7,00 | 7,12 | 24,9° / 17,4° | 29,6° / 20,4° |
+| U(±30°)* | 17,3° | 6,47 | 6,74 | **> 30° / > 30°** | **> 30° / > 30°** |
 
-Erreur L1 de validation (azimut exact) pour contrôler que le bruit ne dégrade pas l'ajustement :
+\* 60 époques au lieu de 100 (§9.4).
 
-| Modèle | Erreur de validation (L1) | Époque |
+Les points se rangent le long d'une **frontière** : quand la tolérance augmente, le SI-SDR à 0° diminue. Les modèles à 60 époques sont un peu sous cette frontière, ce qui est cohérent avec un entraînement plus court. **Le choix du bruit d'entraînement revient à choisir un point sur cette frontière**, selon la précision du système de suivi qui fournira l'azimut.
+
+### 9.4 Forme du bruit : uniforme ou gaussien à variance égale
+
+![Forme du bruit à variance égale](results/forme_variance_egale.png)
+
+| Erreur | N(0, 2,9²) − U(±5°) | U(±8,7°) − N(0, 5²) |
 |---|---|---|
-| `cond_moving` | 0,204 | |
-| `cond_moving_unif5` | ≈ 0,21 (lecture graphique, validation bruitée) | |
-| `cond_moving_unif15` | | |
-| `cond_moving_unif30` | | |
-| `cond_moving_gauss3` | | |
-| `cond_moving_gauss10` | | |
+| −30° | −0,93 [−1,29 ; −0,57] | +0,26 [−0,26 ; +0,88] |
+| −10° | −1,27 [−1,56 ; −1,00] | −0,09 [−0,41 ; +0,23] |
+| −5° | −0,93 [−1,14 ; −0,72] | −0,40 [−0,59 ; −0,19] |
+| 0° | −0,51 [−0,69 ; −0,32] | −0,48 [−0,63 ; −0,34] |
+| +10° | +0,02 [−0,34 ; +0,39] | −0,19 [−0,44 ; +0,06] |
+| +20° | +0,06 [−0,31 ; +0,41] | −0,18 [−0,51 ; +0,15] |
+| +30° | −0,02 [−0,41 ; +0,37] | +0,07 [−0,30 ; +0,43] |
 
-### 8.4 Tableau de synthèse du protocole (à compléter)
+**Lecture**
 
-| Méthode | SI-SDR entrée | SI-SDR sortie | Amélioration |
+- **Pour les erreurs positives (+10° à +30°), les écarts sont nuls dans la marge d'incertitude**, pour les deux variances.
+- **À 0°, les deux modèles récents perdent environ 0,5 dB**, que leur bruit soit gaussien ou uniforme. Ils ont été entraînés sur **60 époques au lieu de 100**. Leur meilleure perte de validation (0,212 et 0,215) correspond à celle des modèles à 100 époques vers l'époque 60. Ce déficit vient donc probablement de l'entraînement plus court, et non de la forme du bruit.
+- Le seul écart net est **N(0, 2,9²) sous U(±5°) pour les erreurs négatives**, de −0,9 à −1,3 dB. Il ne se retrouve pas dans l'autre paire et peut venir de l'asymétrie propre à chaque modèle (§9.6).
+- **Conclusion : à variance égale, aucun effet de la forme n'est démontré. L'amplitude du bruit, c'est-à-dire son écart-type, explique l'essentiel des différences.** Pour conclure proprement, il faut que tous les modèles aient le même nombre d'époques, puis répéter avec plusieurs graines.
+
+### 9.5 Modèle `fixed` contre beamformer (cible à 0°, sources immobiles)
+
+![Modèle fixed contre beamformer](results/fixe_vs_beamformer.png)
+
+| Méthode | Moyenne | Médiane | Moyenne plafonnée à 30 dB |
 |---|---|---|---|
-| Beamformer cardioïde | −0,01 | 14,26 (fixe, 0°) ; 8,38 (mobiles) | +14,26 ; +8,38 |
-| AE dense (fixed) | | | |
-| AE sparse top-k (fixed) | −0,01 | 11,15 | +11,16 |
-| AE conditionné (FiLM), sources fixes | −0,01 | 8,07 | +8,08 |
-| AE conditionné, sources mobiles | −0,01 | 7,96 | +7,97 |
-| AE conditionné, mobiles, bruit uniforme ±5° | −0,01 | 8,08 | +8,09 |
-| AE conditionné, mobiles, bruit gaussien | | | |
+| Cardioïde visé à 0° | 8,34 | 3,42 | 7,23 |
+| AE sparse top-k `fixed` | **9,80** | **9,48** | **9,80** |
 
-### 8.5 Figures disponibles et à produire
+Le modèle `fixed` gagne sur **toutes** les statistiques, et sur **75 % des scènes**. L'écart moyen est de +1,46 dB [−0,35 ; +3,10]. Son intervalle de confiance touche 0, à cause de la dispersion du cardioïde. Le modèle n'utilise pas de consigne d'azimut : sa courbe plate n'est **pas** une mesure de robustesse.
 
-- Déjà dans `results/` : `courbe_robustesse.png`, `courbe_robustesse_unif5.png`, `courbe_apprentissage_unif5.png`, `latent_map.png`, `latent_map_unif5.png`.
-- À produire : un graphique unique SI-SDR vs erreur de direction (beamformer, sans bruit, uniforme, gaussien) ; la courbe d'apprentissage du modèle sans bruit sur 100 époques (le fichier `courbe_apprentissage_model.png` a été écrasé par un essai à 1 époque et ne contient qu'un point) ; les cartes du latent du modèle gaussien.
-- Carte du latent : dense vs sparse, et sans bruit vs avec bruit d'azimut (uniforme, gaussien).
+### 9.6 Asymétrie entre erreurs positives et négatives
+
+`asymetrie.csv`, SI-SDR(−e) − SI-SDR(+e) en dB, sans scènes miroir :
+
+| Modèle | ±5° | ±10° | ±30° |
+|---|---|---|---|
+| sans bruit | −0,73 [−1,15 ; −0,33] | −0,70 [−1,18 ; −0,21] | −1,50 [−2,51 ; −0,49] |
+| U(±5°) | +0,39 [+0,08 ; +0,70] | +0,52 [−0,04 ; +1,10] | −0,90 [−1,96 ; +0,12] |
+| N(0, 2,9²) | −0,30 [−0,57 ; −0,01] | −0,77 [−1,25 ; −0,28] | −1,81 [−2,83 ; −0,83] |
+| N(0, 10²) | −0,28 [−0,48 ; −0,09] | −0,70 [−1,08 ; −0,34] | −2,23 [−3,33 ; −1,09] |
+| U(±30°) | −0,10 [−0,25 ; +0,05] | −0,21 [−0,49 ; +0,08] | −0,71 [−1,61 ; +0,25] |
+| Cardioïde | −0,40 [−1,11 ; +0,19] | −0,43 [−1,32 ; +0,37] | −0,41 [−1,92 ; +1,01] |
+
+La plupart des modèles font moins bien aux erreurs négatives, mais pas tous : U(±5°) fait l'inverse à ±5°. Un bug de signe dans le code affecterait tous les modèles de la même façon. Ce n'est pas le cas : il s'agit donc d'un mélange d'effet du jeu de 200 scènes (le cardioïde penche lui aussi du même côté, sans que ce soit significatif) et d'asymétrie apprise par chaque modèle. **À vérifier avec `python evaluate.py --mirror`** : si l'asymétrie disparaît avec les scènes miroir, elle venait des scènes.
+
+### 9.7 Structure du latent
+
+Cartes `results/latent_map_<nom>.png` : 20 clips, une seule source, un azimut tous les 30°, latent **avant FiLM**. Les dimensions sont triées par azimut préféré, donc **la diagonale est en partie produite par le tri**.
+
+| ![](results/latent_map_model_fixed_none.png) | ![](results/latent_map_model_cond_none.png) |
+|---|---|
+| ![](results/latent_map_model_cond_gauss10.png) | ![](results/latent_map_model_cond_unif30.png) |
+
+| Modèle | Fraction active | Particularités |
+|---|---|---|
+| `fixed_none` | 0,20 | deux blocs (gauche / droite), **presque rien autour de 0°** |
+| `cond_none` | 0,25 | diagonale + raie isolée vers la dimension 50 (arrière, ±150° à 180°) |
+| `cond_Uniform` | 0,26 | diagonale, raie vers 26 à l'arrière |
+| `cond_gauss2p9` | 0,25 | diagonale + **forte raie vers 38** à l'arrière |
+| `cond_gaussian` | 0,26 | diagonale compacte (dimensions 0 à 23) |
+| `cond_unif8p7` | 0,24 | diagonale, raies faibles vers 52 et 60 |
+| `cond_gauss10` | 0,28 | diagonale + raies vers 52 et 61 à l'arrière |
+| `cond_unif30` | **0,31** | activité **étalée sur 0 à 31**, maximum plus faible (≈ 50), pas de raie isolée |
+
+**Observations**
+
+- **Le modèle `fixed` code « ce qui n'est pas devant »**. Quand la source est vers 0°, le latent est presque nul et le décodeur produit un masque par défaut qui laisse passer le signal. Ce modèle n'a pas besoin de coder l'azimut finement, d'où sa fraction active plus faible.
+- **Les modèles conditionnés codent l'azimut de façon continue et circulaire** : les mêmes dimensions sont actives à −180° et à +150°.
+- **Correction d'une affirmation précédente** : nous avions écrit que le bruit d'azimut faisait disparaître les raies isolées à haut indice. **C'est faux.** `gauss2p9`, `gauss10` et `unif8p7` en ont aussi. Ces raies codent la région arrière et dépendent de l'initialisation.
+- **Le seul effet net du bruit sur le latent se voit avec U(±30°)** : plus de dimensions utilisées, une activité plus étalée et moins intense. C'est cohérent avec un modèle qui doit produire des masques plus larges.
+- Les fractions actives des modèles déjà analysés ont baissé de 0,02 à 0,03 depuis la campagne précédente, alors que les modèles n'ont pas changé. Les clips d'analyse viennent maintenant du dossier de validation, et non plus de celui d'entraînement. **Des écarts de cet ordre ne sont donc pas interprétables.**
+
+### 9.8 Courbes d'apprentissage
+
+| ![](results/loss_model_cond_none.png) | ![](results/loss_model_cond_gauss10.png) |
+|---|---|
+| ![](results/loss_model_cond_unif30.png) | ![](results/loss_model_fixed_none.png) |
+
+- Les modèles à 60 époques atteignent leur meilleure validation aux époques 56 à 59 : ils n'ont **pas fini de converger**.
+- Avec un bruit large (`gauss10`, `unif30`), la perte d'entraînement reste **au-dessus** de la validation. C'est normal : l'entraînement se fait avec une consigne fausse, et la validation avec la consigne exacte. Leur perte de validation est plus haute (0,227 et 0,246) : c'est la traduction, sur la perte, du coût de directivité vu à 0°.
+- Sans bruit, un léger écart entre entraînement et validation apparaît après environ 60 époques. Le bruit joue aussi un rôle de **régularisation**.
 
 ---
 
-## 9. Discussion : le compromis directivité / robustesse
+## 10. Discussion
 
-C'est le compromis fondamental de ce projet : **plus on veut que le modèle soit robuste aux grandes erreurs de visée, plus il faut élargir son masque à l'entraînement, et plus il perd en directivité pure.**
+**Le modèle et le beamformer n'échouent pas de la même façon.** Le cardioïde dépend de la géométrie : il est presque parfait quand l'interférent est derrière, et médiocre quand l'interférent est à moins de 90° de la cible, ce qui est fréquent dans ces scènes (§6). L'autoencodeur est plafonné par son masque, mais régulier. Selon l'usage :
 
-- **Sans bruit d'azimut**, le modèle FiLM est très sélectif : excellent si la direction demandée est exacte, mais il rejette la vraie voix dès que la consigne est décalée de quelques degrés. Il suppose donc un système de suivi (tracking) précis.
-- **Avec bruit d'azimut**, on lui montre des consignes imparfaites : il apprend à ouvrir son masque. **Premier résultat (§8.3)** : avec un bruit uniforme ±5°, le gain reste modeste (≤ 0,6 dB entre 5° et 10°) et nul au-delà de 15° ; la courbe ne s'aplatit pas. Le bruit n'a d'effet que dans la plage vue à l'entraînement. On s'attend à une courbe plus plate, au prix d'un SI-SDR potentiellement plus faible à erreur nulle (modèle « moins chirurgical »).
-- **Uniforme vs gaussien** : l'uniforme garantit une robustesse homogène jusqu'à sa borne, le gaussien privilégie les petites erreurs réalistes et couvre mal les grandes. Le choix dépend du système de suivi visé.
-- **Limite de la comparaison** : le beamformer cardioïde est large par construction, donc peu sensible à l'erreur de visée mais aussi peu sélectif. Une baseline plus directive (hypercardioïde, ordre supérieur) donnerait une comparaison plus exigeante.
+- si l'on veut le meilleur résultat **en moyenne** sur des scènes simulées sans réverbération, le cardioïde reste devant ;
+- si l'on veut **un bon résultat sur la plupart des scènes**, l'autoencodeur est préférable : il gagne sur deux scènes sur trois à consigne exacte.
 
-Question à trancher dans les conclusions : garder le modèle ultra-directif (en précisant qu'il nécessite un tracking précis) ou adopter un modèle entraîné avec bruit large, plus tolérant mais moins directif. Le tableau 8.3 permet de répondre quantitativement.
+**Le compromis directivité / robustesse est confirmé, et il est réglable.** L'écart-type du bruit d'entraînement fixe le point sur la frontière (§9.3) :
 
-*(Compléter cette section avec les observations réelles après les expériences de l'étape 6.)*
+| Précision du système de suivi | Bruit conseillé | Ce que l'on obtient |
+|---|---|---|
+| quelques degrés | aucun, ou écart-type ≤ 5° | meilleur SI-SDR à 0° ; s'effondre au-delà de 10° |
+| environ 10° | N(0, 10²) | −0,9 dB à 0°, reste au-dessus de 6,8 dB jusqu'à +10° |
+| 20° à 30° ou inconnue | U(±30°) | −1,45 dB à 0°, courbe presque plate jusqu'à ±20° |
 
----
+**La forme du bruit compte peu, son amplitude compte beaucoup.** À variance égale, aucune différence n'est démontrée. Pour choisir un bruit d'entraînement, il suffit donc de viser l'écart-type de l'erreur attendue du système de suivi, voire un peu plus.
 
-## 10. Limites
-
-- Les scènes sont **simulées** (sources ponctuelles, deux locuteurs, pas de salle par défaut) : les conclusions valent pour ce cadre, pas en général.
-- Le modèle travaille trame par trame (pas de contexte temporel) : choix de simplicité.
-- Le masque est appliqué sur le canal W avec la phase du mélange, ce qui limite la qualité atteignable.
-- Une seule graine par expérience : pour des conclusions solides, répéter avec plusieurs graines et donner la moyenne et l'écart-type.
-- Le bruit d'azimut est modélisé comme un décalage constant par clip ; un vrai tracker produit aussi des erreurs variables dans le temps.
-- Le beamformer de référence est un cardioïde simple : le comparer à une baseline plus directive serait plus rigoureux.
+**L'hypercardioïde n'est pas une base plus exigeante dans ce cadre.** Son lobe arrière lui coûte cher en moyenne, puisque la moitié des interférents arrivent de l'arrière. Une base vraiment plus forte serait un beamformer **adaptatif** (MVDR), qui place son zéro sur l'interférent.
 
 ---
 
-## 11. Pistes d'extension
+## 11. Points d'attention
 
-- Réverbération (sources-images) dans `scenes.py`, niveaux différents entre locuteurs, bruit de fond.
-- Contexte temporel (GRU / convolutions) et perte directement sur le SI-SDR.
-- Bruit d'azimut **variable dans le temps**, ou **curriculum** (amplitude du bruit croissante au fil des époques).
-- Mélange de bruits (gaussien + queue large) et balayage systématique de `a` et `σ`.
-- Baselines plus directives (hypercardioïde, MVDR).
+| Point | Conséquence | État |
+|---|---|---|
+| `MIN_SEP_DEG = −90` (`config.py`) | aucun écart minimal entre locuteurs ; interférent deux fois plus probable dans ±90° de la cible | gardé pour la comparabilité ; passer à 30 demande de tout ré-entraîner |
+| pas de dossier `TEST/LibriSpeech/` | évaluation probablement sur les locuteurs de validation | **à corriger** : ajouter un jeu de test |
+| 4 modèles à 60 époques, 4 à 100 | comparaisons directes biaisées d'environ 0,5 dB à 0° | **à corriger** : ré-entraîner avec le même nombre d'époques |
+| une seule graine par configuration | variabilité d'entraînement inconnue | `python train.py --seed 1`, puis `--seed 2` |
+| moyenne seule dans les anciennes versions | conclusion biaisée en faveur du cardioïde | **corrigé** : médiane, moyenne plafonnée, % gagné |
+| asymétrie ± non expliquée | biais possible du jeu de scènes | **outil ajouté** : `evaluate.py --mirror` |
+| chemins Windows absolus, `--moving` impossible à désactiver, `pandas` manquant | – | **corrigés** |
 
 ---
 
-## 12. Dépannage (Windows / Spyder)
+## 12. Limites
+
+- Les scènes sont **simulées** : sources ponctuelles, deux locuteurs, élévation nulle, **sans salle**. L'absence de réverbération favorise le beamformer, puisqu'elle permet des rejets parfaits dans son zéro.
+- Le modèle travaille trame par trame, sans contexte temporel.
+- Le masque réel appliqué sur W avec la phase du mélange plafonne la qualité atteignable.
+- Une graine par expérience, 200 scènes d'évaluation, et un nombre d'époques qui n'est pas le même pour tous les modèles.
+- L'évaluation porte probablement sur les locuteurs de validation (§9).
+
+---
+
+## 13. Pistes d'extension
+
+**Priorité 1, pour consolider les conclusions :**
+- ré-entraîner tous les modèles conditionnés avec le **même nombre d'époques** ;
+- ajouter un **jeu de test séparé** ;
+- utiliser **3 graines** par configuration ;
+- évaluer avec `--mirror`.
+
+**Priorité 2, pour améliorer le modèle :**
+- ajouter un contexte temporel (GRU ou convolutions) ;
+- estimer un masque complexe ou un filtre multicanal, pour ne plus être plafonné par le masque réel sur W ;
+- utiliser une perte directement sur le SI-SDR ;
+- appliquer un **curriculum** d'amplitude de bruit.
+
+**Priorité 3, pour des scènes plus réalistes et des bases plus fortes :**
+- ajouter de la réverbération (méthode des sources-images) ; on s'attend à ce que l'avantage moyen du cardioïde disparaisse ;
+- faire varier les niveaux entre locuteurs ;
+- ajouter un bruit de fond ;
+- comparer à un beamformer adaptatif MVDR ;
+- tester un écart minimal de 30° entre locuteurs.
+
+---
+
+## 14. Dépannage (Windows / Spyder)
 
 | Symptôme | Cause | Solution |
 |---|---|---|
-| `error: the following arguments are required: --data_dir` ou `--ckpt` | argument obligatoire non fourni | passer l'argument, ou définir une valeur `default=` dans le script |
-| `PermissionError: ... checkpoints` | un **dossier** est passé à `--ckpt` | donner le chemin complet du fichier `.pt` |
-| `PermissionError: ... results/eval.csv` | fichier ouvert dans Excel | fermer le fichier, relancer |
-| `OMP: Error #15 ... libiomp5md.dll` puis kernel qui meurt | deux copies d'OpenMP | `os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"` **avant** l'import de `torch` (contournement non officiel) |
-| `UserWarning: FigureCanvasAgg is non-interactive` | backend `Agg` actif | sans gravité, la figure est bien sauvegardée |
-| `ValueError` dans le `DataLoader` avec `--moving` | forme de l'azimut ou fichier invalide, à diagnostiquer dans la trace complète | lire la fin de la trace, vérifier `val_dir`, tester sans `--moving` |
+| `AssertionError: Aucun fichier .pt trouvé` | dossier `checkpoints/` vide | lancer `train.py` d'abord |
+| `AssertionError: Aucun fichier audio dans ...` | dossier de données absent ou mal nommé | vérifier `config.py`, ou définir `AMBI_TRAIN_DIR` / `AMBI_VAL_DIR` |
+| `[AVERTISSEMENT] Jeu de test introuvable` | pas de dossier `TEST/LibriSpeech/` | ajouter un jeu de test ou définir `AMBI_TEST_DIR` |
+| `train.py` ne fait rien | tous les checkpoints existent | `--retrain`, ou `--only <nom>` |
+| `PermissionError: ... results/*.csv` | fichier ouvert dans Excel | fermer le fichier, relancer |
+| `OMP: Error #15 ... libiomp5md.dll`, puis le kernel s'arrête | deux copies d'OpenMP | `os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"` avant l'import de `torch` (déjà en place) |
+| entraînement lent | lecture et décodage des `.flac` à chaque scène | mettre `load_audio` en cache (`functools.lru_cache`), préparer la validation une seule fois |
 
 ---
 
-## 13. Références
+## 15. Références
 
 - Marković et al. — filtrage spatial implicite pour la séparation multicanale.
 - Paek et al. — autoencodeurs sparse dans les espaces latents audio.
 - Perez et al., *FiLM: Visual Reasoning with a General Conditioning Layer* (2018).
 - Panayotov et al., *LibriSpeech: an ASR corpus based on public domain audio books* (2015).
+- Le Roux et al., *SDR – half-baked or well done?* (2019) — définition du SI-SDR.
