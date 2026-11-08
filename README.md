@@ -1,10 +1,5 @@
 # Extraction de locuteur par direction d'arrivÃ©e sur signaux ambisoniques
 
-Projet pÃ©dagogique (PyTorch). Une scÃ¨ne sonore enregistrÃ©e en **ambisonie du premier ordre** (FOA, 4 canaux) contient deux locuteurs. On veut extraire la voix qui vient d'une **direction donnÃ©e** avec un **autoencodeur Ã  masque**, dont l'espace latent est **parcimonieux** (top-k) et **conditionnÃ© par la direction visÃ©e** (FiLM).
-
-L'approche est comparÃ©e Ã  deux **beamformers classiques** (microphones virtuels cardioÃ¯de et hypercardioÃ¯de). On Ã©tudie surtout sa **robustesse Ã  une erreur de direction**, et l'effet d'un **bruit sur l'azimut visÃ©** pendant l'entraÃ®nement : son amplitude, et sa forme (uniforme ou gaussienne).
-
----
 
 ## Sommaire
 
