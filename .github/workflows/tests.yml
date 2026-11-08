@@ -1,0 +1,32 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:        # bouton « Run workflow » dans l'onglet Actions
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Installer PyTorch (version CPU, plus légère)
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Installer les autres dépendances
+        run: pip install -r requirements.txt
+
+      - name: Lancer les tests
+        env:
+          MPLBACKEND: Agg
+        run: pytest -v
