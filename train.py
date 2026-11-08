@@ -17,36 +17,31 @@ from models import MaskAutoencoder
 from scenes import SceneDataset, list_audio_files
 
 
-# --------------------------------------------------------------------------
-# Liste des expériences. "noise" = (type, échelle en degrés) :
-#   ("uniform", a)  -> eps ~ U(-a, +a)   écart-type a/sqrt(3)
-#   ("gaussian", s) -> eps ~ N(0, s^2)   écart-type s
-# Les noms des 4 premières sont ceux des checkpoints déjà entraînés.
-# --------------------------------------------------------------------------
+
 EXPERIENCES = [
-    # --- campagne actuelle (résultats du README) ---
+
     {"nom": "model_fixed_none",    "mode": "fixed",       "moving": False, "noise": None},
     {"nom": "model_cond_none",     "mode": "conditioned", "moving": True,  "noise": None},
     {"nom": "model_cond_Uniform",  "mode": "conditioned", "moving": True,  "noise": ("uniform", 5.0)},
     {"nom": "model_cond_gaussian", "mode": "conditioned", "moving": True,  "noise": ("gaussian", 5.0)},
-    # --- comparaison de FORME à variance égale ---
+    
     # U(±8,66°) a le même écart-type (5°) que N(0, 5²)
     {"nom": "model_cond_unif8p7",  "mode": "conditioned", "moving": True,  "noise": ("uniform", 8.66)},
     # N(0, 2,89²) a le même écart-type que U(±5°)
     {"nom": "model_cond_gauss2p9", "mode": "conditioned", "moving": True,  "noise": ("gaussian", 2.89)},
-    # --- grandes amplitudes (couvrir 20° à 30° d'erreur) ---
+    # --- grandes amplitude
     {"nom": "model_cond_unif30",   "mode": "conditioned", "moving": True,  "noise": ("uniform", 30.0)},
     {"nom": "model_cond_gauss10",  "mode": "conditioned", "moving": True,  "noise": ("gaussian", 10.0)},
 ]
 
+"""Bruit sur la consigne d'azimut, tiré indépendamment pour chaque échantillon.
 
+Le modèle traite chaque trame séparément et la perte est une moyenne sur
+les trames : un bruit indépendant par trame donne en espérance la même
+perte qu'un décalage constant par clip.
+"""
 def sample_az_noise(az, noise):
-    """Bruit sur la consigne d'azimut, tiré indépendamment pour chaque échantillon.
-
-    Le modèle traite chaque trame séparément et la perte est une moyenne sur
-    les trames : un bruit indépendant par trame donne en espérance la même
-    perte qu'un décalage constant par clip.
-    """
+  
     if noise is None:
         return az
     kind, scale = noise
@@ -74,7 +69,7 @@ def compute_loss(model, batch, l1_weight, device, noise=None):
 
 
 def run_epoch(model, loader, optimizer, l1_weight, device, noise=None):
-    """noise n'est utilisé qu'à l'entraînement : la validation reçoit l'azimut exact."""
+    # noise n'est utilisé qu'à l'entraînement : la validation reçoit l'azimut exact.
     train = optimizer is not None
     model.train(train)
     total, n = 0.0, 0
