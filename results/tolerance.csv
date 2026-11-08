@@ -1,0 +1,10 @@
+model_name,mean_0deg,median_0deg,tol_mean_pos,tol_mean_neg,tol_median_pos,tol_median_neg
+model_cond_Uniform,7.92,7.97,10.69,12.00,12.20,14.12
+model_cond_gauss10,7.00,7.12,24.94,17.39,29.61,20.36
+model_cond_gauss2p9,7.41,7.14,11.83,10.21,13.70,13.08
+model_cond_gaussian,7.82,7.77,12.71,13.30,14.40,16.15
+model_cond_none,7.93,7.65,8.65,7.34,10.69,10.61
+model_cond_unif30,6.47,6.74,inf,inf,inf,inf
+model_cond_unif8p7,7.34,7.28,13.32,14.42,15.41,16.59
+beamformer_cardioide,8.38,3.46,inf,inf,inf,inf
+beamformer_hypercardioide,5.96,5.72,inf,inf,inf,inf

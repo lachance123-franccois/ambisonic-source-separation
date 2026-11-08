@@ -1,6 +1,6 @@
 from math import gcd
 from pathlib import Path
-
+from functools import lru_cache
 import numpy as np
 import soundfile as sf
 import torch
@@ -8,14 +8,14 @@ from scipy.signal import resample_poly
 from torch.utils.data import Dataset
 
 from ambisonics import encode_foa
-from config import SR, N_SAMPLES, TARGET_RMS
+from config import SR, N_SAMPLES, TARGET_RMS, MIN_SEP_DEG, MAX_MOVE_DEG
 
 #Mélange deux sources dans une scène ambisonique.
-#az1, az2 : nombre (source fixe)  (source mobile).
+#az1, az2 : nombre (source fixe) ou tableau (T,) (source mobile).
 def make_scene(s1, s2, az1, az2):
     return encode_foa(s1, az1) + encode_foa(s2, az2)
 
-
+@lru_cache(maxsize=None)
 def load_audio(path):
     x, sr = sf.read(str(path), dtype="float32")
     if x.ndim > 1:
@@ -61,10 +61,12 @@ class SceneDataset(Dataset):
     max_move_deg    : déplacement maximal (en degrés) sur la durée du clip
     fixed_target_az : si défini, la voix cible est toujours à cet azimut (ex. 0.0 = devant)
     min_sep_deg     : écart angulaire minimal entre les deux locuteurs au départ
+                      (valeur par défaut dans config.py ; une valeur négative
+                      ne garantit aucun écart, voir le commentaire de MIN_SEP_DEG)
     """
 
     def __init__(self, files, n_items=1000, seed=None, moving=False,
-                 max_move_deg=90, fixed_target_az=None, min_sep_deg=-90):
+                 max_move_deg=MAX_MOVE_DEG, fixed_target_az=None, min_sep_deg=MIN_SEP_DEG):
         self.files = list(files)
         self.n_items, self.seed = n_items, seed
         self.moving, self.max_move_deg = moving, max_move_deg
