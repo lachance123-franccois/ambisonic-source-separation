@@ -70,124 +70,124 @@ L'ambisonie décompose le champ sonore autour d'un point sur la base des **harmo
 
 | Canal | Équivalent physique | Directivité | Gain pour une onde venant de (θ, φ) |
 |---|---|---|---|
-| W | pression (micro omnidirectionnel) | identique dans toutes les directions | $1$ |
-| X | gradient de pression avant / arrière (micro en « 8 ») | maximale devant, nulle sur les côtés | $\cos\theta\cos\varphi$ |
-| Y | gradient gauche / droite | maximale à gauche, nulle devant | $\sin\theta\cos\varphi$ |
-| Z | gradient haut / bas | maximale en haut | $\sin\varphi$ |
+| W | pression (micro omnidirectionnel) | identique dans toutes les directions | $`1`$ |
+| X | gradient de pression avant / arrière (micro en « 8 ») | maximale devant, nulle sur les côtés | $`\cos\theta\cos\varphi`$ |
+| Y | gradient gauche / droite | maximale à gauche, nulle devant | $`\sin\theta\cos\varphi`$ |
+| Z | gradient haut / bas | maximale en haut | $`\sin\varphi`$ |
 
-Une source $s(t)$ venant de la direction (θ, φ) donne donc le signal à 4 canaux
+Une source $`s(t)`$ venant de la direction (θ, φ) donne donc le signal à 4 canaux
 
-$$
+```math
 \mathbf{x}(t) = \mathbf{y}(\theta, \varphi)\, s(t),
 \qquad
 \mathbf{y}(\theta, \varphi) = \begin{bmatrix} 1 & \cos\theta\cos\varphi & \sin\theta\cos\varphi & \sin\varphi \end{bmatrix}^{\top}.
-$$
+```
 
-Le vecteur $\mathbf{y}$ est le **vecteur d'encodage**. La normalisation est **SN3D** : W a un gain de 1, et les canaux du premier ordre ont un gain maximal de 1. Les canaux sont rangés dans l'ordre W, X, Y, Z. Attention : le format AmbiX utilise aussi SN3D, mais range les canaux dans l'ordre W, Y, Z, X.
+Le vecteur $`\mathbf{y}`$ est le **vecteur d'encodage**. La normalisation est **SN3D** : W a un gain de 1, et les canaux du premier ordre ont un gain maximal de 1. Les canaux sont rangés dans l'ordre W, X, Y, Z. Attention : le format AmbiX utilise aussi SN3D, mais range les canaux dans l'ordre W, Y, Z, X.
 
 Comme φ = 0 ici, Z = 0 : ce canal n'apporte aucune information et n'est pas utilisé.
 
-**Scène à deux locuteurs.** La propagation est linéaire, donc les champs s'additionnent. La cible $s_1$ arrive de $\theta_1(t)$ et l'interférent $s_2$ de $\theta_2(t)$ :
+**Scène à deux locuteurs.** La propagation est linéaire, donc les champs s'additionnent. La cible $`s_1`$ arrive de $`\theta_1(t)`$ et l'interférent $`s_2`$ de $`\theta_2(t)`$ :
 
-$$
+```math
 \mathbf{x}(t) = \mathbf{y}(\theta_1(t))\, s_1(t) + \mathbf{y}(\theta_2(t))\, s_2(t).
-$$
+```
 
-Pour une **source mobile**, $\theta(t)$ varie linéairement pendant le clip, et le gain d'encodage est recalculé à chaque échantillon. Avec un déplacement d'au plus 90° en 2 s, la source tourne d'au plus 1,4° pendant une fenêtre STFT de 32 ms : dans une trame, on peut la considérer comme immobile.
+Pour une **source mobile**, $`\theta(t)`$ varie linéairement pendant le clip, et le gain d'encodage est recalculé à chaque échantillon. Avec un déplacement d'au plus 90° en 2 s, la source tourne d'au plus 1,4° pendant une fenêtre STFT de 32 ms : dans une trame, on peut la considérer comme immobile.
 
 **Écart à la réalité.** Les scènes sont simulées directement au format ambisonique (format B). Un vrai micro ambisonique, avec 4 capsules en tétraèdre, a une directivité qui se dégrade aux hautes fréquences (repliement spatial au-delà de quelques kHz). Il capte aussi la réverbération de la salle. Aucun de ces deux effets n'est simulé ici.
 
 ### 3.3 Représentation temps-fréquence (STFT)
 
-Chaque canal $c$ est découpé en trames de $N = 512$ échantillons (32 ms), avec un pas de $H = 128$ échantillons (8 ms, soit 75 % de recouvrement) et une fenêtre de Hann $w$ :
+Chaque canal $`c`$ est découpé en trames de $`N = 512`$ échantillons (32 ms), avec un pas de $`H = 128`$ échantillons (8 ms, soit 75 % de recouvrement) et une fenêtre de Hann $`w`$ :
 
-$$
+```math
 X_c(k, n) = \sum_{t} x_c(t)\, w(t - nH)\, e^{-j 2\pi k t / N},
 \qquad k = 0, \dots, 256.
-$$
+```
 
-Cela donne $F = 257$ fréquences, espacées de 31,25 Hz, et 251 trames pour un clip de 2 s.
+Cela donne $`F = 257`$ fréquences, espacées de 31,25 Hz, et 251 trames pour un clip de 2 s.
 
-La STFT est linéaire. Dans chaque case $(k, n)$, en considérant les sources immobiles pendant la trame, on a donc :
+La STFT est linéaire. Dans chaque case $`(k, n)`$, en considérant les sources immobiles pendant la trame, on a donc :
 
-$$
+```math
 W = S_1 + S_2,
 \qquad
 X = \cos\theta_1\, S_1 + \cos\theta_2\, S_2,
 \qquad
 Y = \sin\theta_1\, S_1 + \sin\theta_2\, S_2.
-$$
+```
 
 ### 3.4 Descripteurs spatiaux (`features.py`)
 
 **Idée.** En acoustique, la direction d'une onde se lit dans l'**intensité active** : le produit de la pression (canal W) et de la vitesse particulaire (canaux X, Y). On en calcule une version normalisée, dans chaque case temps-fréquence :
 
-$$
-i_x(k, n) = \frac{\mathrm{Re}\{W^{*} X\}}{|W|^2 + \epsilon},
+```math
+i_x(k, n) = \frac{\mathrm{Re}\lbrace W^{\ast} X\rbrace }{|W|^2 + \epsilon},
 \qquad
-i_y(k, n) = \frac{\mathrm{Re}\{W^{*} Y\}}{|W|^2 + \epsilon},
+i_y(k, n) = \frac{\mathrm{Re}\lbrace W^{\ast} Y\rbrace }{|W|^2 + \epsilon},
 \qquad
 \ell(k, n) = \log\big(1 + |W|\big).
-$$
+```
 
-On ajoute $\epsilon = 10^{-6}$ pour éviter de diviser par zéro.
+On ajoute $`\epsilon = 10^{-6}`$ pour éviter de diviser par zéro.
 
-**Une seule source dans la case.** Avec $W = S$ et $X = \cos\theta\, S$, on obtient $\mathrm{Re}\{W^* X\} = \cos\theta\, |S|^2$, donc :
+**Une seule source dans la case.** Avec $`W = S`$ et $`X = \cos\theta\, S`$, on obtient $`\mathrm{Re}\lbrace W^{\ast} X\rbrace  = \cos\theta\, |S|^2`$, donc :
 
-$$
+```math
 i_x = \cos\theta, \qquad i_y = \sin\theta.
-$$
+```
 
-Le couple $(i_x, i_y)$ est un point du cercle unité qui indique **exactement** la direction de la source, quel que soit son spectre. On pourrait d'ailleurs estimer directement la direction par $\hat\theta = \mathrm{atan2}(i_y, i_x)$. C'est le principe des méthodes classiques de localisation par vecteur d'intensité, comme DirAC.
+Le couple $`(i_x, i_y)`$ est un point du cercle unité qui indique **exactement** la direction de la source, quel que soit son spectre. On pourrait d'ailleurs estimer directement la direction par $`\hat\theta = \mathrm{atan2}(i_y, i_x)`$. C'est le principe des méthodes classiques de localisation par vecteur d'intensité, comme DirAC.
 
-**Deux sources dans la case.** Avec $c_m = \cos\theta_m$ :
+**Deux sources dans la case.** Avec $`c_m = \cos\theta_m`$ :
 
-$$
-i_x = \frac{c_1 |S_1|^2 + c_2 |S_2|^2 + (c_1 + c_2)\, \mathrm{Re}\{S_1^{*} S_2\}}{|S_1 + S_2|^2}.
-$$
+```math
+i_x = \frac{c_1 |S_1|^2 + c_2 |S_2|^2 + (c_1 + c_2)\, \mathrm{Re}\lbrace S_1^{\ast} S_2\rbrace }{|S_1 + S_2|^2}.
+```
 
-- Si **une source domine** la case ($|S_1| \gg |S_2|$), on retrouve la direction de cette source. La parole est **parcimonieuse** en temps-fréquence : à deux locuteurs, la plupart des cases sont dominées par l'un des deux (hypothèse de *W-disjoint orthogonality*). Les descripteurs indiquent donc, case par case, **qui parle**.
-- Si les deux sources ont une énergie comparable, on obtient une moyenne pondérée des deux directions, perturbée par le terme croisé $\mathrm{Re}\{S_1^* S_2\}$. Quand $S_1$ et $S_2$ s'annulent partiellement, $|W|^2$ devient petit et $i_x$ peut sortir de $[-1, 1]$. C'est pourquoi les valeurs sont **bornées à $[-2, 2]$**.
-- Dans les cases **silencieuses**, $\epsilon$ domine et $i_x, i_y \to 0$ : la case ne porte aucune information de direction.
+- Si **une source domine** la case ($`|S_1| \gg |S_2|`$), on retrouve la direction de cette source. La parole est **parcimonieuse** en temps-fréquence : à deux locuteurs, la plupart des cases sont dominées par l'un des deux (hypothèse de *W-disjoint orthogonality*). Les descripteurs indiquent donc, case par case, **qui parle**.
+- Si les deux sources ont une énergie comparable, on obtient une moyenne pondérée des deux directions, perturbée par le terme croisé $`\mathrm{Re}\lbrace S_1^{\ast} S_2\rbrace `$. Quand $`S_1`$ et $`S_2`$ s'annulent partiellement, $`|W|^2`$ devient petit et $`i_x`$ peut sortir de $`[-1, 1]`$. C'est pourquoi les valeurs sont **bornées à $`[-2, 2]`$**.
+- Dans les cases **silencieuses**, $`\epsilon`$ domine et $`i_x, i_y \to 0`$ : la case ne porte aucune information de direction.
 
-**Le niveau** $\ell$ indique au modèle quelles cases contiennent de l'énergie. Il lui donne aussi une information spectrale, comme les formants et les harmoniques de la voix.
+**Le niveau** $`\ell`$ indique au modèle quelles cases contiennent de l'énergie. Il lui donne aussi une information spectrale, comme les formants et les harmoniques de la voix.
 
-**Vecteur d'entrée.** Pour chaque trame $n$, on concatène les trois descripteurs sur les 257 fréquences :
+**Vecteur d'entrée.** Pour chaque trame $`n`$, on concatène les trois descripteurs sur les 257 fréquences :
 
-$$
+```math
 \mathbf{f}_n = \big[\, \ell(\cdot, n),\; i_x(\cdot, n),\; i_y(\cdot, n) \,\big] \in \mathbb{R}^{771}.
-$$
+```
 
 **Ce que les descripteurs ne contiennent pas** : la phase absolue, le canal Z, et le contexte des trames voisines. Le modèle décide trame par trame.
 
 ### 3.5 Modèle (`models.py`)
 
-**Masque.** On cherche un masque réel $M(k, n) \in [0, 1]$ qu'on applique au canal omnidirectionnel :
+**Masque.** On cherche un masque réel $`M(k, n) \in [0, 1]`$ qu'on applique au canal omnidirectionnel :
 
-$$
+```math
 \hat S_1(k, n) = M(k, n)\, W(k, n),
 \qquad
 \hat s_1 = \mathrm{iSTFT}\big(\hat S_1\big).
-$$
+```
 
-La phase de $\hat S_1$ est celle du mélange $W$.
+La phase de $`\hat S_1`$ est celle du mélange $`W`$.
 
 **Réseau.** Pour chaque trame :
 
-$$
+```math
 \mathbf{z} = \mathrm{topk}_8\Big(\mathrm{ReLU}\big(A_2\, \mathrm{ReLU}(A_1 \mathbf{f}_n + \mathbf{a}_1) + \mathbf{a}_2\big)\Big) \in \mathbb{R}^{64}_{+}
-$$
+```
 
-$$
+```math
 [\boldsymbol\gamma, \boldsymbol\beta] = g\big(\cos\theta_{\text{visé}}, \sin\theta_{\text{visé}}\big),
 \qquad
 \mathbf{h} = (1 + \boldsymbol\gamma) \odot \mathbf{z} + \boldsymbol\beta
 \quad \text{(FiLM, mode conditionné)}
-$$
+```
 
-$$
+```math
 \mathbf{M}_n = \sigma\big(B_2\, \mathrm{ReLU}(B_1 \mathbf{h} + \mathbf{b}_1) + \mathbf{b}_2\big) \in [0, 1]^{257}
-$$
+```
 
 ```
 descripteurs d'une trame (771)
@@ -203,46 +203,46 @@ descripteurs d'une trame (771)
 ```
 
 - **Top-k** : on garde les 8 plus grandes valeurs du latent et on met les 56 autres à zéro. Le gradient ne passe que par les 8 dimensions gardées. Chaque trame est donc décrite par peu de « détecteurs » actifs.
-- **FiLM** : le petit réseau $g$ (2 → 64 → 128) transforme la direction visée en un gain $\boldsymbol\gamma$ et un décalage $\boldsymbol\beta$ appliqués au latent. Le même encodeur sert pour toutes les directions, et c'est le FiLM qui « oriente » le décodeur. On lui donne $(\cos\theta, \sin\theta)$ plutôt que θ, pour que −180° et +180° donnent la même entrée.
+- **FiLM** : le petit réseau $`g`$ (2 → 64 → 128) transforme la direction visée en un gain $`\boldsymbol\gamma`$ et un décalage $`\boldsymbol\beta`$ appliqués au latent. Le même encodeur sert pour toutes les directions, et c'est le FiLM qui « oriente » le décodeur. On lui donne $`(\cos\theta, \sin\theta)`$ plutôt que θ, pour que −180° et +180° donnent la même entrée.
 - **Taille** : environ 297 000 paramètres sans conditionnement et 305 000 avec.
 
 **Perte.** C'est une L1 entre la magnitude estimée et la magnitude de la vraie voix, en moyenne sur les cases :
 
-$$
+```math
 \mathcal{L} = \frac{1}{F N} \sum_{k, n} \Big|\, M(k, n)\, |W(k, n)| - |S_1(k, n)| \,\Big|
 \;\; \big(+\, \lambda\, \overline{|\mathbf{z}|} \text{ avec } \texttt{--sparse l1}\big).
-$$
+```
 
-Le masque idéal pour cette perte est $M^\star = \min\big(1, |S_1| / |W|\big)$. Quand les deux voix s'annulent partiellement ($|S_1| > |W|$), même le masque idéal ne peut pas reconstruire $|S_1|$. Et comme la phase reste celle du mélange, **la qualité atteignable est plafonnée**. Autre point : la perte porte sur les magnitudes, alors que la métrique finale (SI-SDR) porte sur le signal temporel. Les deux objectifs ne coïncident pas exactement.
+Le masque idéal pour cette perte est $`M^\star = \min\big(1, |S_1| / |W|\big)`$. Quand les deux voix s'annulent partiellement ($`|S_1| > |W|`$), même le masque idéal ne peut pas reconstruire $`|S_1|`$. Et comme la phase reste celle du mélange, **la qualité atteignable est plafonnée**. Autre point : la perte porte sur les magnitudes, alors que la métrique finale (SI-SDR) porte sur le signal temporel. Les deux objectifs ne coïncident pas exactement.
 
 ### 3.6 Beamformer de référence (`beamformer.py`)
 
-**Micro virtuel.** En combinant les canaux, on fabrique un micro de premier ordre orienté vers $\theta_s$ :
+**Micro virtuel.** En combinant les canaux, on fabrique un micro de premier ordre orienté vers $`\theta_s`$ :
 
-$$
+```math
 b(t) = p\, W(t) + (1 - p)\big(X(t) \cos\theta_s + Y(t) \sin\theta_s\big).
-$$
+```
 
 Pour une onde venant de θ, ce micro a le gain (sa **directivité**) :
 
-$$
+```math
 G(\Delta) = p + (1 - p) \cos\Delta,
 \qquad
 \Delta = \theta - \theta_s.
-$$
+```
 
-| Directivité | $p$ | Gain sur le côté, $G(90°)$ | Zéros | Gain à l'arrière, $G(180°)$ | Indice de directivité (3D) |
+| Directivité | $`p`$ | Gain sur le côté, $`G(90°)`$ | Zéros | Gain à l'arrière, $`G(180°)`$ | Indice de directivité (3D) |
 |---|---|---|---|---|---|
 | Omnidirectionnel (= W) | 1 | 1 | aucun | 1 | 0 dB |
 | **Cardioïde** | 0,5 | 0,5 (−6 dB) | **180°** | **0** | 4,8 dB |
 | Supercardioïde | 0,37 | 0,37 (−8,7 dB) | ±125° | −0,27 (−11,4 dB) | 5,7 dB |
 | **Hypercardioïde** | 0,25 | 0,25 (−12 dB) | ±109,5° | −0,5 (−6 dB) | 6,0 dB (maximum au 1er ordre) |
 
-**Ce que le beamformer obtient, en théorie.** Prenons une scène immobile, le beamformer visé exactement sur la cible, et deux voix décorrélées de même puissance. La sortie vaut $b = s_1 + G(\Delta)\, s_2$, où Δ est l'écart angulaire entre l'interférent et la cible. Son SI-SDR (§8.1) vaut alors :
+**Ce que le beamformer obtient, en théorie.** Prenons une scène immobile, le beamformer visé exactement sur la cible, et deux voix décorrélées de même puissance. La sortie vaut $`b = s_1 + G(\Delta)\, s_2`$, où Δ est l'écart angulaire entre l'interférent et la cible. Son SI-SDR (§8.1) vaut alors :
 
-$$
+```math
 \mathrm{SI\text{-}SDR} \approx -20 \log_{10} |G(\Delta)|.
-$$
+```
 
 | Interférent à Δ = | 30° | 60° | 90° | 120° | 150° | 180° |
 |---|---|---|---|---|---|---|
@@ -253,7 +253,7 @@ $$
 
 - **Le cardioïde est « tout ou rien ».** Il est faible tant que l'interférent est à moins de 90° de la cible, et presque parfait quand l'interférent est proche de l'arrière. Avec la distribution d'interférents de ces scènes (§6), la théorie prédit une **médiane de 3,2 dB** et **14 % de scènes au-dessus de 20 dB**. On mesure **3,46 dB et 14 %** (28 scènes sur 200) : c'est ce qui sépare la moyenne de la médiane (§9.1).
 - **L'hypercardioïde** rejette mieux les interférents sur les côtés, mais son lobe arrière plafonne le rejet à 6 dB pour un interférent derrière. Médiane prédite : 5,4 dB, mesurée : 5,72 dB.
-- **Robustesse à l'erreur de visée.** Avec une erreur $e$, le gain sur la cible devient $G(e)$. Pour le cardioïde, $G(30°) = 0{,}93$, soit seulement −0,6 dB : son lobe est si large qu'une erreur de 30° ne change presque rien. C'est pourquoi le beamformer est presque insensible à l'erreur de visée (§9.2).
+- **Robustesse à l'erreur de visée.** Avec une erreur $`e`$, le gain sur la cible devient $`G(e)`$. Pour le cardioïde, $`G(30°) = 0{,}93`$, soit seulement −0,6 dB : son lobe est si large qu'une erreur de 30° ne change presque rien. C'est pourquoi le beamformer est presque insensible à l'erreur de visée (§9.2).
 - Le beamformer est **fixe** : il ne sait pas où est l'interférent. Un beamformer **adaptatif** (MVDR) placerait son zéro sur l'interférent. Ce serait une base plus exigeante.
 
 ### 3.7 Les modes d'entraînement
@@ -266,12 +266,12 @@ $$
 
 ### 3.8 Bruit sur l'azimut visé (`sample_az_noise` dans `train.py`)
 
-À l'entraînement, la consigne donnée au FiLM est $\theta_{\text{visé}} = \theta_{\text{vrai}} + \varepsilon$ :
+À l'entraînement, la consigne donnée au FiLM est $`\theta_{\text{visé}} = \theta_{\text{vrai}} + \varepsilon`$ :
 
 | Type | Tirage | Écart-type de ε | Part des tirages au-delà de 2 écarts-types |
 |---|---|---|---|
-| uniforme | $\varepsilon \sim \mathcal{U}(-a, +a)$ | $a / \sqrt{3}$ | 0 % (borné à ±a) |
-| gaussien | $\varepsilon \sim \mathcal{N}(0, \sigma^2)$ | $\sigma$ | 4,6 % |
+| uniforme | $`\varepsilon \sim \mathcal{U}(-a, +a)`$ | $`a / \sqrt{3}`$ | 0 % (borné à ±a) |
+| gaussien | $`\varepsilon \sim \mathcal{N}(0, \sigma^2)`$ | $`\sigma`$ | 4,6 % |
 
 Le modèle voit ainsi des consignes imparfaites. Il apprend à garder les cases dont la direction est **proche** de la consigne, et pas seulement **égale** à la consigne : son masque s'élargit en angle.
 
@@ -417,38 +417,38 @@ Pour chaque modèle, le script encode 20 clips **d'une seule source** à chaque 
 
 ### 8.1 SI-SDR (*scale-invariant signal-to-distortion ratio*)
 
-Soient $\hat{\mathbf{s}}$ le signal estimé et $\mathbf{s}$ la vraie voix, tous deux centrés (moyenne retirée). On projette l'estimation sur la référence :
+Soient $`\hat{\mathbf{s}}`$ le signal estimé et $`\mathbf{s}`$ la vraie voix, tous deux centrés (moyenne retirée). On projette l'estimation sur la référence :
 
-$$
+```math
 \alpha = \frac{\langle \hat{\mathbf{s}}, \mathbf{s} \rangle}{\|\mathbf{s}\|^2},
 \qquad
 \mathbf{e}_{\text{cible}} = \alpha\, \mathbf{s},
 \qquad
 \mathbf{e}_{\text{résidu}} = \hat{\mathbf{s}} - \alpha\, \mathbf{s},
-$$
+```
 
-$$
+```math
 \mathrm{SI\text{-}SDR} = 10 \log_{10} \frac{\|\mathbf{e}_{\text{cible}}\|^2}{\|\mathbf{e}_{\text{résidu}}\|^2} \quad \text{(dB)}.
-$$
+```
 
-- **Invariance au gain** : multiplier $\hat{\mathbf{s}}$ par une constante ne change pas le score. On mesure donc la **forme** du signal, pas son volume. C'est indispensable ici, car le beamformer et le masque ne conservent pas le niveau de la cible.
+- **Invariance au gain** : multiplier $`\hat{\mathbf{s}}`$ par une constante ne change pas le score. On mesure donc la **forme** du signal, pas son volume. C'est indispensable ici, car le beamformer et le masque ne conservent pas le niveau de la cible.
 - **Le résidu contient tout ce qui n'est pas la cible** : l'interférent qui reste, les distorsions de la voix dues au masque, les artefacts de phase. Le SI-SDR les pénalise de la même façon, sans les distinguer.
-- **Repères** : 0 dB signifie autant d'énergie dans le résidu que dans la cible. Chaque +10 dB divise l'énergie du résidu par 10. Le mélange brut, W = $s_1 + s_2$ avec deux voix de même puissance, est à **0 dB** (mesuré : −0,01 dB).
-- **Amélioration** : $\Delta\mathrm{SI\text{-}SDR} = \mathrm{SI\text{-}SDR}(\hat{\mathbf{s}}) - \mathrm{SI\text{-}SDR}(W)$, c'est-à-dire ce qu'apporte la méthode par rapport au mélange brut.
+- **Repères** : 0 dB signifie autant d'énergie dans le résidu que dans la cible. Chaque +10 dB divise l'énergie du résidu par 10. Le mélange brut, W = $`s_1 + s_2`$ avec deux voix de même puissance, est à **0 dB** (mesuré : −0,01 dB).
+- **Amélioration** : $`\Delta\mathrm{SI\text{-}SDR} = \mathrm{SI\text{-}SDR}(\hat{\mathbf{s}}) - \mathrm{SI\text{-}SDR}(W)`$, c'est-à-dire ce qu'apporte la méthode par rapport au mélange brut.
 - **Ce qu'il ne mesure pas** : la qualité perçue et l'intelligibilité. Pour cela, il faudrait des mesures perceptives comme PESQ ou STOI (§13).
 
-Dans le code (`metrics.py`), un petit $\epsilon = 10^{-8}$ évite la division par zéro. Une estimation parfaite donne donc une valeur très grande mais finie.
+Dans le code (`metrics.py`), un petit $`\epsilon = 10^{-8}`$ évite la division par zéro. Une estimation parfaite donne donc une valeur très grande mais finie.
 
 ### 8.2 Statistiques sur les scènes
 
-On calcule un SI-SDR $x_i$ par scène $i = 1, \dots, n$ ($n = 200$), pour chaque méthode et chaque erreur de visée.
+On calcule un SI-SDR $`x_i`$ par scène $`i = 1, \dots, n`$ ($`n = 200`$), pour chaque méthode et chaque erreur de visée.
 
 | Statistique | Définition | Ce qu'elle dit |
 |---|---|---|
-| Moyenne | $\bar x = \frac{1}{n} \sum_i x_i$ | statistique habituelle, mais très sensible aux scènes extrêmes (cardioïde > 20 dB) |
+| Moyenne | $`\bar x = \frac{1}{n} \sum_i x_i`$ | statistique habituelle, mais très sensible aux scènes extrêmes (cardioïde > 20 dB) |
 | Médiane | valeur qui sépare les scènes en deux moitiés | ce qu'obtient une scène typique ; insensible aux scènes extrêmes |
-| Moyenne plafonnée | $\frac{1}{n} \sum_i \min(x_i, 30\ \text{dB})$ | moyenne où une scène ne peut pas compter pour plus de 30 dB |
-| % de scènes gagnées | $\frac{1}{n} \sum_i \mathbf{1}\big[x_i^{\text{modèle}} > x_i^{\text{beamformer}}\big]$ | sur combien de scènes le modèle fait mieux |
+| Moyenne plafonnée | $`\frac{1}{n} \sum_i \min(x_i, 30\ \text{dB})`$ | moyenne où une scène ne peut pas compter pour plus de 30 dB |
+| % de scènes gagnées | $`\frac{1}{n} \sum_i \mathbf{1}\big[x_i^{\text{modèle}} > x_i^{\text{beamformer}}\big]`$ | sur combien de scènes le modèle fait mieux |
 
 **Pourquoi plusieurs statistiques ?** Les distributions sont très différentes. Le cardioïde est « tout ou rien » (§3.6), avec un écart-type de 10,7 dB. Le modèle est régulier, avec un écart-type d'environ 3 dB. Une seule statistique peut alors donner une conclusion trompeuse : il faut regarder la moyenne **et** la médiane **et** le pourcentage de scènes gagnées.
 
@@ -457,34 +457,34 @@ On calcule un SI-SDR $x_i$ par scène $i = 1, \dots, n$ ($n = 200$), pour chaque
 Pour savoir si un écart est réel ou dû au hasard du choix des 200 scènes :
 
 1. On tire 200 scènes **avec remise** parmi les 200, et on calcule la moyenne sur ce tirage.
-2. On répète $B = 2000$ fois.
+2. On répète $`B = 2000`$ fois.
 3. L'intervalle de confiance à 95 % va du 2,5ᵉ au 97,5ᵉ centile de ces 2000 moyennes.
 
-Pour comparer deux méthodes A et B, on calcule l'écart **scène par scène**, $d_i = x_i^A - x_i^B$, puis on applique le bootstrap aux $d_i$. Les deux méthodes étant testées sur les mêmes scènes, la difficulté propre à chaque scène s'annule dans l'écart : l'intervalle est beaucoup plus étroit qu'en comparant deux moyennes séparées. **Si l'intervalle ne contient pas 0, l'écart est significatif.**
+Pour comparer deux méthodes A et B, on calcule l'écart **scène par scène**, $`d_i = x_i^A - x_i^B`$, puis on applique le bootstrap aux $`d_i`$. Les deux méthodes étant testées sur les mêmes scènes, la difficulté propre à chaque scène s'annule dans l'écart : l'intervalle est beaucoup plus étroit qu'en comparant deux moyennes séparées. **Si l'intervalle ne contient pas 0, l'écart est significatif.**
 
 Ce bootstrap ne mesure que la variabilité due **aux scènes**. La variabilité due **à l'entraînement** (initialisation, ordre des données) demande de répéter avec plusieurs graines.
 
 ### 8.4 Tolérance à l'erreur de visée
 
-On note $m(e)$ le SI-SDR (moyen ou médian) quand on vise avec une erreur $e$. La **tolérance** $e^\star$ est la plus grande erreur qui coûte au plus 3 dB :
+On note $`m(e)`$ le SI-SDR (moyen ou médian) quand on vise avec une erreur $`e`$. La **tolérance** $`e^\star`$ est la plus grande erreur qui coûte au plus 3 dB :
 
-$$
-e^\star = \max\big\{\, e \ge 0 \;:\; m(e) \ge m(0) - 3\ \text{dB} \,\big\},
-$$
+```math
+e^\star = \max\big\lbrace \, e \ge 0 \;:\; m(e) \ge m(0) - 3\ \text{dB} \,\big\rbrace ,
+```
 
-obtenue par interpolation linéaire entre les erreurs testées. Elle est calculée séparément pour $e > 0$ et $e < 0$. « Pire des deux côtés » désigne la plus petite des deux. Si la courbe ne perd jamais 3 dB dans la plage testée, on note « > 30° ».
+obtenue par interpolation linéaire entre les erreurs testées. Elle est calculée séparément pour $`e > 0`$ et $`e < 0`$. « Pire des deux côtés » désigne la plus petite des deux. Si la courbe ne perd jamais 3 dB dans la plage testée, on note « > 30° ».
 
 ### 8.5 Asymétrie
 
-$$
+```math
 a(e) = \frac{1}{n} \sum_i \big[\, x_i(-e) - x_i(+e) \,\big].
-$$
+```
 
-Avec $a(e) < 0$, la méthode fait moins bien quand on vise trop à droite que trop à gauche. Avec `--mirror`, chaque scène est aussi évaluée en miroir gauche / droite ($Y \to -Y$, $\theta \to -\theta$). Le jeu de scènes devient alors parfaitement symétrique : toute asymétrie restante vient du modèle lui-même.
+Avec $`a(e) < 0`$, la méthode fait moins bien quand on vise trop à droite que trop à gauche. Avec `--mirror`, chaque scène est aussi évaluée en miroir gauche / droite ($`Y \to -Y`$, $`\theta \to -\theta`$). Le jeu de scènes devient alors parfaitement symétrique : toute asymétrie restante vient du modèle lui-même.
 
 ### 8.6 Carte du latent
 
-Pour chaque azimut θ, de −180° à +150° par pas de 30°, on encode 20 clips d'une seule source et on moyenne le latent $\mathbf{z}$, **avant FiLM**, sur les clips et les trames. On obtient une activation moyenne $\bar z_d(\theta)$ pour chaque dimension $d$. La **fraction active** est la part des couples (dimension, azimut) avec $\bar z_d(\theta) > 10^{-6}$. Sur la figure, les dimensions sont triées par azimut préféré. La forme en diagonale vient donc en partie de ce tri : ce qui est informatif, c'est le nombre de dimensions utilisées et la largeur en azimut de chacune.
+Pour chaque azimut θ, de −180° à +150° par pas de 30°, on encode 20 clips d'une seule source et on moyenne le latent $`\mathbf{z}`$, **avant FiLM**, sur les clips et les trames. On obtient une activation moyenne $`\bar z_d(\theta)`$ pour chaque dimension $`d`$. La **fraction active** est la part des couples (dimension, azimut) avec $`\bar z_d(\theta) > 10^{-6}`$. Sur la figure, les dimensions sont triées par azimut préféré. La forme en diagonale vient donc en partie de ce tri : ce qui est informatif, c'est le nombre de dimensions utilisées et la largeur en azimut de chacune.
 
 ### 8.7 Courbes d'apprentissage
 
